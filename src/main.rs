@@ -26,20 +26,20 @@ mod dhcp_parser {
     use nom::{bytes::complete::take, error::ErrorKind, IResult};
 
     #[derive(Debug)]
-    pub enum DHCPDiscoverError<I> {
+    pub enum DHCPMessageError<I> {
         InvalidDataError,
         NomError(nom::error::Error<I>),
     }
 
-    impl<'a> From<nom::error::Error<&'a [u8]>> for DHCPDiscoverError<&'a [u8]> {
+    impl<'a> From<nom::error::Error<&'a [u8]>> for DHCPMessageError<&'a [u8]> {
         fn from(e: nom::error::Error<&'a [u8]>) -> Self {
-            DHCPDiscoverError::NomError(e)
+            DHCPMessageError::NomError(e)
         }
     }
 
-    impl<I> ParseError<I> for DHCPDiscoverError<I> {
+    impl<I> ParseError<I> for DHCPMessageError<I> {
         fn from_error_kind(input: I, kind: ErrorKind) -> Self {
-            DHCPDiscoverError::NomError(nom::error::Error::new(input, kind))
+            DHCPMessageError::NomError(nom::error::Error::new(input, kind))
         }
 
         fn append(_input: I, _kind: ErrorKind, other: Self) -> Self {
@@ -48,7 +48,7 @@ mod dhcp_parser {
     }
 
     #[derive(Debug)]
-    pub struct DHCPDiscover {
+    pub struct DHCPMessage {
         pub op: u8,
         pub hardware_type: u8,
         pub hardware_len: u8,
@@ -68,7 +68,7 @@ mod dhcp_parser {
 
     pub fn parse_dhcp_discover(
         bytes: &[u8],
-    ) -> IResult<&[u8], DHCPDiscover, DHCPDiscoverError<&[u8]>> {
+    ) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
         match bytes {
             &[op, hardware_type, hardware_len, hops, ref rem @ ..] => {
                 type ParsedRemainder<'a> = (
@@ -109,7 +109,7 @@ mod dhcp_parser {
                     take_n_bytes::<16>,
                     take_n_bytes::<4>,
                 ))(rem)?;
-                let discover = DHCPDiscover {
+                let discover = DHCPMessage {
                     op,
                     hardware_type,
                     hardware_len,
@@ -126,13 +126,13 @@ mod dhcp_parser {
                 };
                 Ok((rem, discover))
             }
-            _ => Err(nom::Err::Error(DHCPDiscoverError::InvalidDataError)),
+            _ => Err(nom::Err::Error(DHCPMessageError::InvalidDataError)),
         }
     }
 
     fn take_n_bytes<const N: usize>(
         bytes: &[u8],
-    ) -> IResult<&[u8], [u8; N], DHCPDiscoverError<&[u8]>> {
+    ) -> IResult<&[u8], [u8; N], DHCPMessageError<&[u8]>> {
         map(take(N), |client_address: &[u8]| {
             client_address.try_into().unwrap()
         })(bytes)
@@ -156,7 +156,7 @@ mod dhcp_parser {
             0x43, 0x44,
         ];
         let magic_cookie = [0x45, 0x46, 0x47, 0x48];
-        let expected = DHCPDiscover {
+        let expected = DHCPMessage {
             op,
             hardware_type,
             hardware_len,
