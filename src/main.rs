@@ -15,11 +15,14 @@ async fn main() -> io::Result<()> {
 }
 
 mod dhcp_parser {
+    use nom::combinator::map;
     use nom::error::ParseError;
+    use nom::sequence::tuple;
     use nom::{bytes::complete::take, error::ErrorKind, IResult};
 
     #[derive(Debug)]
     pub enum DHCPDiscoverError<I> {
+        InvalidDataError,
         NomError(nom::error::Error<I>),
     }
 
@@ -54,36 +57,41 @@ mod dhcp_parser {
     pub fn parse_dhcp_discover(
         bytes: &[u8],
     ) -> IResult<&[u8], DHCPDiscover, DHCPDiscoverError<&[u8]>> {
-        let (rem, op) = take_byte(bytes)?;
-        let (rem, hardware_type) = take_byte(rem)?;
-        let (rem, hardware_len) = take_byte(rem)?;
-        let (rem, hops) = take_byte(rem)?;
-        let (rem, xid) = take(4usize)(rem)?;
-        let xid: [u8; 4] = xid.try_into().unwrap();
-        let (rem, seconds) = take(2usize)(rem)?;
-        let seconds: [u8; 2] = seconds.try_into().unwrap();
-        let (rem, flags) = take(2usize)(rem)?;
-        let flags: [u8; 2] = flags.try_into().unwrap();
-        let (rem, client_address) = take(4usize)(rem)?;
-        let client_address: [u8; 4] = client_address.try_into().unwrap();
-        let (rem, your_address) = take(4usize)(rem)?;
-        let your_address: [u8; 4] = your_address.try_into().unwrap();
-        let discover = DHCPDiscover {
-            op,
-            hardware_type,
-            hardware_len,
-            hops,
-            xid,
-            seconds,
-            flags,
-            client_address,
-            your_address,
-        };
-        Ok((rem, discover))
+        match bytes {
+            &[op, hardware_type, hardware_len, hops, ref rem @ ..] => {
+                type ParsedRemainder<'a> =
+                    (&'a [u8], ([u8; 4], [u8; 2], [u8; 2], [u8; 4], [u8; 4]));
+                let (rem, (xid, seconds, flags, client_address, your_address)): ParsedRemainder =
+                    tuple((
+                        takeN_bytes::<4>,
+                        takeN_bytes::<2>,
+                        takeN_bytes::<2>,
+                        takeN_bytes::<4>,
+                        takeN_bytes::<4>,
+                    ))(rem)?;
+                let discover = DHCPDiscover {
+                    op,
+                    hardware_type,
+                    hardware_len,
+                    hops,
+                    xid,
+                    seconds,
+                    flags,
+                    client_address,
+                    your_address,
+                };
+                Ok((rem, discover))
+            }
+            _ => Err(nom::Err::Error(DHCPDiscoverError::InvalidDataError)),
+        }
     }
 
-    fn take_byte(bytes: &[u8]) -> IResult<&[u8], u8, DHCPDiscoverError<&[u8]>> {
-        take(1usize)(bytes).map(|(rem, slice)| (rem, slice[0]))
+    fn takeN_bytes<const N: usize>(
+        bytes: &[u8],
+    ) -> IResult<&[u8], [u8; N], DHCPDiscoverError<&[u8]>> {
+        map(take(N), |client_address: &[u8]| {
+            client_address.try_into().unwrap()
+        })(bytes)
     }
 
     #[test]
