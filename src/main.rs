@@ -45,6 +45,7 @@ mod dhcp_parser {
         hardware_len: u8,
         hops: u8, // number of relays
         xid: [u8; 4],
+        seconds: [u8; 2],
     }
 
     pub fn parse_dhcp_discover(
@@ -56,12 +57,15 @@ mod dhcp_parser {
         let (rem, hops) = take_byte(rem)?;
         let (rem, xid) = take(4usize)(rem)?;
         let xid: [u8; 4] = xid.try_into().unwrap();
+        let (rem, seconds) = take(2usize)(rem)?;
+        let seconds: [u8; 2] = seconds.try_into().unwrap();
         let discover = DHCPDiscover {
             op,
             hardware_type,
             hardware_len,
             hops,
             xid,
+            seconds,
         };
         Ok((rem, discover))
     }
@@ -77,19 +81,22 @@ mod dhcp_parser {
         let hardware_len = 0x03;
         let hops = 0x04;
         let xid = [0x05, 0x06, 0x07, 0x08];
+        let seconds = [0x09, 0x10];
         let expected = DHCPDiscover {
             op,
             hardware_type,
             hardware_len,
             hops,
             xid,
+            seconds,
         };
-        let bytes: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let bytes: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10];
         let (_, result) = parse_dhcp_discover(&bytes).unwrap();
         assert_eq!(result.op, expected.op);
         assert_eq!(result.hardware_type, expected.hardware_type);
         assert_eq!(result.hardware_len, expected.hardware_len);
         assert_eq!(result.hops, expected.hops);
         assert_eq!(result.xid, expected.xid);
+        assert_eq!(result.seconds, expected.seconds);
     }
 }
