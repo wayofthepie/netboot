@@ -32,6 +32,7 @@ pub enum DHCPOption {
     ArpCacheTimeout(u32),
     SubnetMask(Ipv4Addr),
     LogServer(Vec<Ipv4Addr>),
+    ResourceLocationProtocolServer(Vec<Ipv4Addr>),
 }
 
 pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
@@ -104,6 +105,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
 const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
 const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
 const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
+const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
 
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
@@ -121,8 +123,14 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
         [DHCP_OPTION_LOG_SERVER, len, ref rem @ ..] => {
             let (rem, data) = take(*len as usize)(rem)?;
             // TODO: Make sure there are no bytes leftover here.
-            let (_, addresses) = many0(map(take_n_bytes::<4>, Ipv4Addr::from))(data)?;
+            let (_, addresses) = parse_ip_addresses(data)?;
             Ok((rem, DHCPOption::LogServer(addresses)))
+        }
+        [DHCP_OPTION_RESOURCE_LOCATION_SERVER, len, ref rem @ ..] => {
+            let (rem, data) = take(*len as usize)(rem)?;
+            // TODO: Make sure there are no bytes leftover here.
+            let (_, addresses) = parse_ip_addresses(data)?;
+            Ok((rem, DHCPOption::ResourceLocationProtocolServer(addresses)))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
     }
@@ -134,11 +142,18 @@ fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], [u8; N], DHCPMes
     })(bytes)
 }
 
+fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessageError<&[u8]>> {
+    many0(map(take_n_bytes::<4>, Ipv4Addr::from))(bytes)
+}
+
 #[cfg(test)]
 mod test {
     use std::net::Ipv4Addr;
 
-    use crate::dhcp::parser::{parse_dhcp, DHCPMessage, DHCPOption};
+    use crate::dhcp::parser::{
+        parse_dhcp, DHCPMessage, DHCPOption, DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER,
+        DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
+    };
 
     const TEST_MESSAGE_NO_OPTION: &[u8] = &[
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
@@ -211,7 +226,7 @@ mod test {
     fn should_parse_arp_cache_timeout_option() {
         let timeout = 60000_u32;
         let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
-        let dhcp_options: [u8; 2] = [0x35, 0x04];
+        let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04];
         let bytes = [
             TEST_MESSAGE_NO_OPTION,
             dhcp_options.as_slice(),
@@ -231,7 +246,7 @@ mod test {
         let subnet_mask = Ipv4Addr::new(255, 255, 255, 0);
         let subnet_mask_bytes: u32 = subnet_mask.into();
         let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
-        let dhcp_option: [u8; 2] = [0x01, 0x04];
+        let dhcp_option: [u8; 2] = [DHCP_OPTION_SUBNET_MASK, 0x04];
         let bytes = [
             TEST_MESSAGE_NO_OPTION,
             dhcp_option.as_slice(),
@@ -249,7 +264,7 @@ mod test {
             .iter()
             .flat_map(|&ip| u32::from(ip).to_be_bytes())
             .collect();
-        let dhcp_option: [u8; 2] = [0x07, 0x08];
+        let dhcp_option: [u8; 2] = [DHCP_OPTION_LOG_SERVER, 0x08];
         let bytes = [
             TEST_MESSAGE_NO_OPTION,
             dhcp_option.as_slice(),
@@ -258,5 +273,26 @@ mod test {
         .concat();
         let (_, result) = parse_dhcp(&bytes).unwrap();
         assert_eq!(result.options, vec![DHCPOption::LogServer(log_servers)])
+    }
+
+    #[test]
+    fn should_parse_resource_location_server_option() {
+        let rlp_servers = vec![Ipv4Addr::new(255, 255, 255, 0), Ipv4Addr::new(1, 1, 1, 1)];
+        let rlp_servers_bytes: Vec<u8> = rlp_servers
+            .iter()
+            .flat_map(|&ip| u32::from(ip).to_be_bytes())
+            .collect();
+        let dhcp_option: [u8; 2] = [DHCP_OPTION_RESOURCE_LOCATION_SERVER, 0x08];
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            dhcp_option.as_slice(),
+            rlp_servers_bytes.as_slice(),
+        ]
+        .concat();
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        assert_eq!(
+            result.options,
+            vec![DHCPOption::ResourceLocationProtocolServer(rlp_servers)]
+        )
     }
 }
