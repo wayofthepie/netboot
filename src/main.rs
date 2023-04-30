@@ -1,7 +1,7 @@
 use std::io;
 use tokio::net::UdpSocket;
 
-use crate::dhcp_parser::parse_dhcp_discover;
+use crate::dhcp_parser::parse_dhcp;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -11,8 +11,10 @@ async fn main() -> io::Result<()> {
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
 
-        let (_, discover) = parse_dhcp_discover(&buf).unwrap();
-        println!("{:02X?} discover mac", discover.client_hardware_address);
+        let (rem, dhcp) = parse_dhcp(&buf).unwrap();
+        println!("{:02X?} discover mac", dhcp.client_hardware_address);
+        println!("{:02X?} rem", rem);
+        println!("{:#?}", dhcp.options);
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);
@@ -64,11 +66,16 @@ mod dhcp_parser {
         // it could be a GUID up to 128 bits in length.
         pub client_hardware_address: [u8; 16],
         pub magic_cookie: [u8; 4],
+        pub options: Vec<DHCPOption>,
     }
 
-    pub fn parse_dhcp_discover(
-        bytes: &[u8],
-    ) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
+    #[derive(Debug, PartialEq)]
+    pub enum DHCPOption {
+        ArpCacheTimeout(u32),
+        NotYetImplemented,
+    }
+
+    pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
         match bytes {
             &[op, hardware_type, hardware_len, hops, ref rem @ ..] => {
                 type ParsedRemainder<'a> = (
@@ -82,6 +89,7 @@ mod dhcp_parser {
                         [u8; 4],
                         [u8; 4],
                         [u8; 16],
+                        [u8; 192],
                         [u8; 4],
                     ),
                 );
@@ -96,6 +104,7 @@ mod dhcp_parser {
                         server_address,
                         gateway_address,
                         client_hardware_address,
+                        _,
                         magic_cookie,
                     ),
                 ): ParsedRemainder = tuple((
@@ -107,8 +116,10 @@ mod dhcp_parser {
                     take_n_bytes::<4>,
                     take_n_bytes::<4>,
                     take_n_bytes::<16>,
+                    take_n_bytes::<192>,
                     take_n_bytes::<4>,
                 ))(rem)?;
+                let (rem, options) = parse_dhcp_option(rem)?;
                 let discover = DHCPMessage {
                     op,
                     hardware_type,
@@ -123,10 +134,23 @@ mod dhcp_parser {
                     gateway_address,
                     client_hardware_address,
                     magic_cookie,
+                    options: vec![options],
                 };
                 Ok((rem, discover))
             }
             _ => Err(nom::Err::Error(DHCPMessageError::InvalidDataError)),
+        }
+    }
+
+    // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
+    fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
+        match bytes {
+            &[0x35, _, ref rem @ ..] => {
+                let (rem, data) = take_n_bytes::<4>(rem)?;
+                let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+                Ok((rem, DHCPOption::ArpCacheTimeout(timeout / 100)))
+            }
+            _ => Ok((bytes, DHCPOption::NotYetImplemented)),
         }
     }
 
@@ -137,6 +161,19 @@ mod dhcp_parser {
             client_address.try_into().unwrap()
         })(bytes)
     }
+
+    const TEST_MESSAGE_NO_OPTION: &[u8] = &[
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+        0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
+        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48,
+    ];
 
     #[test]
     fn should_parse_dhcp_discover() {
@@ -170,14 +207,9 @@ mod dhcp_parser {
             gateway_address,
             client_hardware_address,
             magic_cookie,
+            options: vec![],
         };
-        let bytes: Vec<u8> = vec![
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
-            0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
-            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
-            0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
-        ];
-        let (rem, result) = parse_dhcp_discover(&bytes).unwrap();
+        let (rem, result) = parse_dhcp(TEST_MESSAGE_NO_OPTION).unwrap();
         assert_eq!(result.op, expected.op);
         assert_eq!(result.hardware_type, expected.hardware_type);
         assert_eq!(result.hardware_len, expected.hardware_len);
@@ -195,5 +227,24 @@ mod dhcp_parser {
         );
         assert_eq!(result.magic_cookie, expected.magic_cookie);
         assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_parse_arp_cache_timeout_option() {
+        let timeout = 60000_u32;
+        let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
+        let dhcp_options: [u8; 2] = [0x35, 0x04];
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            dhcp_options.as_slice(),
+            timeout_bytes.as_slice(),
+        ]
+        .concat();
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        let expected_timeout = timeout / 100;
+        assert_eq!(
+            result.options,
+            vec![DHCPOption::ArpCacheTimeout(expected_timeout)]
+        )
     }
 }
