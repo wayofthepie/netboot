@@ -1,6 +1,8 @@
 use std::io;
 use tokio::net::UdpSocket;
 
+use crate::dhcp_parser::parse_dhcp_discover;
+
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let sock = UdpSocket::bind("0.0.0.0:67").await?;
@@ -8,6 +10,9 @@ async fn main() -> io::Result<()> {
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
+
+        let (_, discover) = parse_dhcp_discover(&buf).unwrap();
+        println!("{:02X?} discover mac", discover.client_hardware_address);
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);
@@ -42,18 +47,23 @@ mod dhcp_parser {
         }
     }
 
+    #[derive(Debug)]
     pub struct DHCPDiscover {
-        op: u8,
-        hardware_type: u8,
-        hardware_len: u8,
-        hops: u8, // number of relays
-        xid: [u8; 4],
-        seconds: [u8; 2],
-        flags: [u8; 2],
-        client_address: [u8; 4],
-        your_address: [u8; 4],
-        server_address: [u8; 4],
-        gateway_address: [u8; 4],
+        pub op: u8,
+        pub hardware_type: u8,
+        pub hardware_len: u8,
+        pub hops: u8, // number of relays
+        pub xid: [u8; 4],
+        pub seconds: [u8; 2],
+        pub flags: [u8; 2],
+        pub client_address: [u8; 4],
+        pub your_address: [u8; 4],
+        pub server_address: [u8; 4],
+        pub gateway_address: [u8; 4],
+        // This can be more than just a mac address, hence why it's 16 bytes. For example
+        // it could be a GUID up to 128 bits in length.
+        pub client_hardware_address: [u8; 16],
+        pub magic_cookie: [u8; 4],
     }
 
     pub fn parse_dhcp_discover(
@@ -71,6 +81,8 @@ mod dhcp_parser {
                         [u8; 4],
                         [u8; 4],
                         [u8; 4],
+                        [u8; 16],
+                        [u8; 4],
                     ),
                 );
                 let (
@@ -83,15 +95,19 @@ mod dhcp_parser {
                         your_address,
                         server_address,
                         gateway_address,
+                        client_hardware_address,
+                        magic_cookie,
                     ),
                 ): ParsedRemainder = tuple((
-                    takeN_bytes::<4>,
-                    takeN_bytes::<2>,
-                    takeN_bytes::<2>,
-                    takeN_bytes::<4>,
-                    takeN_bytes::<4>,
-                    takeN_bytes::<4>,
-                    takeN_bytes::<4>,
+                    take_n_bytes::<4>,
+                    take_n_bytes::<2>,
+                    take_n_bytes::<2>,
+                    take_n_bytes::<4>,
+                    take_n_bytes::<4>,
+                    take_n_bytes::<4>,
+                    take_n_bytes::<4>,
+                    take_n_bytes::<16>,
+                    take_n_bytes::<4>,
                 ))(rem)?;
                 let discover = DHCPDiscover {
                     op,
@@ -105,6 +121,8 @@ mod dhcp_parser {
                     your_address,
                     server_address,
                     gateway_address,
+                    client_hardware_address,
+                    magic_cookie,
                 };
                 Ok((rem, discover))
             }
@@ -112,7 +130,7 @@ mod dhcp_parser {
         }
     }
 
-    fn takeN_bytes<const N: usize>(
+    fn take_n_bytes<const N: usize>(
         bytes: &[u8],
     ) -> IResult<&[u8], [u8; N], DHCPDiscoverError<&[u8]>> {
         map(take(N), |client_address: &[u8]| {
@@ -133,6 +151,11 @@ mod dhcp_parser {
         let your_address = [0x17, 0x18, 0x19, 0x20];
         let server_address = [0x21, 0x22, 0x23, 0x24];
         let gateway_address = [0x25, 0x26, 0x27, 0x28];
+        let client_hardware_address = [
+            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
+            0x43, 0x44,
+        ];
+        let magic_cookie = [0x45, 0x46, 0x47, 0x48];
         let expected = DHCPDiscover {
             op,
             hardware_type,
@@ -145,10 +168,14 @@ mod dhcp_parser {
             your_address,
             server_address,
             gateway_address,
+            client_hardware_address,
+            magic_cookie,
         };
         let bytes: Vec<u8> = vec![
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
             0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
+            0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
         ];
         let (rem, result) = parse_dhcp_discover(&bytes).unwrap();
         assert_eq!(result.op, expected.op);
@@ -162,6 +189,11 @@ mod dhcp_parser {
         assert_eq!(result.your_address, expected.your_address);
         assert_eq!(result.server_address, expected.server_address);
         assert_eq!(result.gateway_address, expected.gateway_address);
+        assert_eq!(
+            result.client_hardware_address,
+            expected.client_hardware_address
+        );
+        assert_eq!(result.magic_cookie, expected.magic_cookie);
         assert!(rem.is_empty());
     }
 }
