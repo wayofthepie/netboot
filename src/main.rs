@@ -22,14 +22,18 @@ async fn main() -> io::Result<()> {
 }
 
 mod dhcp_parser {
+    use std::net::Ipv4Addr;
+
     use nom::combinator::map;
     use nom::error::ParseError;
+    use nom::multi::many0;
     use nom::sequence::tuple;
     use nom::{bytes::complete::take, error::ErrorKind, IResult};
 
     #[derive(Debug)]
     pub enum DHCPMessageError<I> {
         InvalidDataError,
+        NotYetImplemented,
         NomError(nom::error::Error<I>),
     }
 
@@ -72,7 +76,7 @@ mod dhcp_parser {
     #[derive(Debug, PartialEq)]
     pub enum DHCPOption {
         ArpCacheTimeout(u32),
-        NotYetImplemented,
+        SubnetMask(Ipv4Addr),
     }
 
     pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
@@ -119,7 +123,7 @@ mod dhcp_parser {
                     take_n_bytes::<192>,
                     take_n_bytes::<4>,
                 ))(rem)?;
-                let (rem, options) = parse_dhcp_option(rem)?;
+                let (rem, options) = many0(parse_dhcp_option)(rem)?;
                 let discover = DHCPMessage {
                     op,
                     hardware_type,
@@ -134,7 +138,7 @@ mod dhcp_parser {
                     gateway_address,
                     client_hardware_address,
                     magic_cookie,
-                    options: vec![options],
+                    options,
                 };
                 Ok((rem, discover))
             }
@@ -145,12 +149,17 @@ mod dhcp_parser {
     // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
     fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
         match bytes {
-            &[0x35, _, ref rem @ ..] => {
+            [0x35, _, ref rem @ ..] => {
                 let (rem, data) = take_n_bytes::<4>(rem)?;
                 let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
                 Ok((rem, DHCPOption::ArpCacheTimeout(timeout / 100)))
             }
-            _ => Ok((bytes, DHCPOption::NotYetImplemented)),
+            [0x01, _, ref rem @ ..] => {
+                let (rem, data) = take_n_bytes::<4>(rem)?;
+                let subnet_mask = Ipv4Addr::from(data);
+                Ok((rem, DHCPOption::SubnetMask(subnet_mask)))
+            }
+            _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
         }
     }
 
@@ -246,5 +255,21 @@ mod dhcp_parser {
             result.options,
             vec![DHCPOption::ArpCacheTimeout(expected_timeout)]
         )
+    }
+
+    #[test]
+    fn should_parse_subnet_mask_option() {
+        let subnet_mask = Ipv4Addr::new(255, 255, 255, 0);
+        let subnet_mask_bytes: u32 = subnet_mask.into();
+        let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
+        let dhcp_option: [u8; 2] = [0x01, 0x04];
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            dhcp_option.as_slice(),
+            subnet_mask_bytes.as_slice(),
+        ]
+        .concat();
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        assert_eq!(result.options, vec![DHCPOption::SubnetMask(subnet_mask)])
     }
 }
