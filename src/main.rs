@@ -77,6 +77,7 @@ mod dhcp_parser {
     pub enum DHCPOption {
         ArpCacheTimeout(u32),
         SubnetMask(Ipv4Addr),
+        LogServer(Vec<Ipv4Addr>),
     }
 
     pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
@@ -146,18 +147,28 @@ mod dhcp_parser {
         }
     }
 
+    const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
+    const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
+    const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
+
     // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
     fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
         match bytes {
-            [0x35, _, ref rem @ ..] => {
+            [DHCP_OPTION_ARP_CACHE_TIMEOUT, _, ref rem @ ..] => {
                 let (rem, data) = take_n_bytes::<4>(rem)?;
                 let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
                 Ok((rem, DHCPOption::ArpCacheTimeout(timeout / 100)))
             }
-            [0x01, _, ref rem @ ..] => {
+            [DHCP_OPTION_SUBNET_MASK, _, ref rem @ ..] => {
                 let (rem, data) = take_n_bytes::<4>(rem)?;
                 let subnet_mask = Ipv4Addr::from(data);
                 Ok((rem, DHCPOption::SubnetMask(subnet_mask)))
+            }
+            [DHCP_OPTION_LOG_SERVER, len, ref rem @ ..] => {
+                let (rem, data) = take(*len as usize)(rem)?;
+                // TODO: Make sure there are no bytes leftover here.
+                let (_, addresses) = many0(map(take_n_bytes::<4>, Ipv4Addr::from))(data)?;
+                Ok((rem, DHCPOption::LogServer(addresses)))
             }
             _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
         }
@@ -271,5 +282,23 @@ mod dhcp_parser {
         .concat();
         let (_, result) = parse_dhcp(&bytes).unwrap();
         assert_eq!(result.options, vec![DHCPOption::SubnetMask(subnet_mask)])
+    }
+
+    #[test]
+    fn should_parse_log_server_option() {
+        let log_servers = vec![Ipv4Addr::new(255, 255, 255, 0), Ipv4Addr::new(1, 1, 1, 1)];
+        let log_servers_bytes: Vec<u8> = log_servers
+            .iter()
+            .flat_map(|&ip| u32::from(ip).to_be_bytes())
+            .collect();
+        let dhcp_option: [u8; 2] = [0x07, 0x08];
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            dhcp_option.as_slice(),
+            log_servers_bytes.as_slice(),
+        ]
+        .concat();
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        assert_eq!(result.options, vec![DHCPOption::LogServer(log_servers)])
     }
 }
