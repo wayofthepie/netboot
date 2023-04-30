@@ -3,7 +3,7 @@ mod dhcp;
 use std::io;
 use tokio::net::UdpSocket;
 
-use crate::dhcp::parse_dhcp;
+use crate::dhcp::parser::parse_dhcp;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
