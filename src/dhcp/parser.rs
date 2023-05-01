@@ -8,8 +8,8 @@ use nom::{bytes::complete::take, IResult};
 use super::error::DHCPMessageError;
 
 #[derive(Debug)]
-pub struct DHCPMessage {
-    pub op: u8,
+pub struct DHCPMessage<'a> {
+    pub op: DHCPOperation,
     pub hardware_type: u8,
     pub hardware_len: u8,
     pub hops: u8, // number of relays
@@ -21,10 +21,16 @@ pub struct DHCPMessage {
     pub server_address: [u8; 4],
     pub gateway_address: [u8; 4],
     // This can be more than just a mac address, hence why it's 16 bytes. For example
-    // it could be a GUID up to 128 bits in length.
-    pub client_hardware_address: [u8; 16],
+    // it could be a GUID up to 128 bits in length. The length that needs to be
+    // parsed is defined in hardware_len.
+    pub client_hardware_address: &'a [u8],
     pub magic_cookie: [u8; 4],
     pub options: Vec<DHCPOption>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum DHCPOperation {
+    Discover,
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,7 +55,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                     [u8; 4],
                     [u8; 4],
                     [u8; 4],
-                    [u8; 16],
+                    &'a [u8],
                     [u8; 192],
                     [u8; 4],
                 ),
@@ -76,13 +82,14 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                 take_n_bytes::<4>,
                 take_n_bytes::<4>,
                 take_n_bytes::<4>,
-                take_n_bytes::<16>,
+                take(16usize),
                 take_n_bytes::<192>,
                 take_n_bytes::<4>,
             ))(rem)?;
             let (rem, options) = many0(parse_dhcp_option)(rem)?;
+            let (_, client_hardware_address) = take(hardware_len)(client_hardware_address)?;
             let discover = DHCPMessage {
-                op,
+                op: op_from_byte(op)?.1,
                 hardware_type,
                 hardware_len,
                 hops,
@@ -99,7 +106,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
             };
             Ok((rem, discover))
         }
-        _ => Err(nom::Err::Error(DHCPMessageError::InvalidDataError)),
+        _ => Err(nom::Err::Error(DHCPMessageError::InvalidData)),
     }
 }
 
@@ -155,18 +162,25 @@ fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessage
     many0(map(take_n_bytes::<4>, Ipv4Addr::from))(bytes)
 }
 
+fn op_from_byte<'a>(byte: u8) -> IResult<(), DHCPOperation, DHCPMessageError<&'a [u8]>> {
+    match byte {
+        0x01 => Ok(((), DHCPOperation::Discover)),
+        _ => Err(nom::Err::Error(DHCPMessageError::InvalidOperation)),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, DHCPMessage, DHCPOption, DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER,
-        DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, DHCP_OPTION_RESOURCE_LOCATION_SERVER,
-        DHCP_OPTION_SUBNET_MASK,
+        parse_dhcp, DHCPMessage, DHCPOperation, DHCPOption, DHCP_OPTION_ARP_CACHE_TIMEOUT,
+        DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
+        DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
     };
 
     const TEST_MESSAGE_NO_OPTION: &[u8] = &[
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+        0x01, 0x01, 0x06, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
         0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
         0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -180,9 +194,8 @@ mod test {
 
     #[test]
     fn should_parse_dhcp_discover() {
-        let op = 0x01;
-        let hardware_type = 0x02;
-        let hardware_len = 0x03;
+        let hardware_type = 0x01;
+        let hardware_len = 0x06;
         let hops = 0x04;
         let xid = [0x05, 0x06, 0x07, 0x08];
         let seconds = [0x09, 0x10];
@@ -191,13 +204,10 @@ mod test {
         let your_address = [0x17, 0x18, 0x19, 0x20];
         let server_address = [0x21, 0x22, 0x23, 0x24];
         let gateway_address = [0x25, 0x26, 0x27, 0x28];
-        let client_hardware_address = [
-            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
-            0x43, 0x44,
-        ];
+        let client_hardware_address = &[0x29, 0x30, 0x31, 0x32, 0x33, 0x34];
         let magic_cookie = [0x45, 0x46, 0x47, 0x48];
         let expected = DHCPMessage {
-            op,
+            op: DHCPOperation::Discover,
             hardware_type,
             hardware_len,
             hops,

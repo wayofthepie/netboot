@@ -2,7 +2,8 @@ use nom::error::{ErrorKind, ParseError};
 
 #[derive(Debug)]
 pub enum DHCPMessageError<I> {
-    InvalidDataError,
+    InvalidData,
+    InvalidOperation,
     NotYetImplemented,
     NomError(nom::error::Error<I>),
 }
