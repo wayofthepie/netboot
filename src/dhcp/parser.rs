@@ -7,7 +7,7 @@ use nom::{bytes::complete::take, IResult};
 
 use super::error::DHCPMessageError;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DHCPMessage<'a> {
     pub op: DHCPOperation,
     pub hardware_type: u8,
@@ -15,7 +15,7 @@ pub struct DHCPMessage<'a> {
     pub hops: u8, // number of relays
     pub xid: [u8; 4],
     pub seconds: [u8; 2],
-    pub flags: [u8; 2],
+    pub flags: u16,
     pub client_address: [u8; 4],
     pub your_address: [u8; 4],
     pub server_address: [u8; 4],
@@ -24,12 +24,24 @@ pub struct DHCPMessage<'a> {
     // it could be a GUID up to 128 bits in length. The length that needs to be
     // parsed is defined in hardware_len.
     pub client_hardware_address: &'a [u8],
-    pub magic_cookie: [u8; 4],
     pub options: Vec<DHCPOption>,
 }
 
-#[derive(Debug, PartialEq)]
+impl DHCPMessage<'_> {
+    const BROADCAST_FLAG_BIT: usize = 15;
+
+    pub fn is_broadcast(&self) -> bool {
+        self.is_bit_set_in_flags(Self::BROADCAST_FLAG_BIT)
+    }
+
+    fn is_bit_set_in_flags(&self, n: usize) -> bool {
+        self.flags & (1 << n) != 0
+    }
+}
+
+#[derive(Debug, Default, PartialEq)]
 pub enum DHCPOperation {
+    #[default]
     Discover,
 }
 
@@ -48,16 +60,16 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
             type ParsedRemainder<'a> = (
                 &'a [u8],
                 (
-                    [u8; 4],
-                    [u8; 2],
-                    [u8; 2],
-                    [u8; 4],
-                    [u8; 4],
-                    [u8; 4],
-                    [u8; 4],
-                    &'a [u8],
-                    [u8; 192],
-                    [u8; 4],
+                    [u8; 4],   // xid
+                    [u8; 2],   // seconds
+                    [u8; 2],   // flags
+                    [u8; 4],   // client addr
+                    [u8; 4],   // your addr
+                    [u8; 4],   // server address
+                    [u8; 4],   // gateway address
+                    &'a [u8],  // client hardware address
+                    [u8; 192], // bootp
+                    [u8; 4],   // magic cookie
                 ),
             );
             let (
@@ -71,8 +83,8 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                     server_address,
                     gateway_address,
                     client_hardware_address,
-                    _,
-                    magic_cookie,
+                    _, // bootp
+                    _, // magic cookie
                 ),
             ): ParsedRemainder = tuple((
                 take_n_bytes::<4>,
@@ -88,6 +100,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
             ))(rem)?;
             let (rem, options) = many0(parse_dhcp_option)(rem)?;
             let (_, client_hardware_address) = take(hardware_len)(client_hardware_address)?;
+            let flags = u16::from_be_bytes(flags);
             let discover = DHCPMessage {
                 op: op_from_byte(op)?.1,
                 hardware_type,
@@ -101,7 +114,6 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                 server_address,
                 gateway_address,
                 client_hardware_address,
-                magic_cookie,
                 options,
             };
             Ok((rem, discover))
@@ -199,13 +211,12 @@ mod test {
         let hops = 0x04;
         let xid = [0x05, 0x06, 0x07, 0x08];
         let seconds = [0x09, 0x10];
-        let flags = [0x11, 0x12];
+        let flags = u16::from_be_bytes([0x11, 0x12]);
         let client_address = [0x13, 0x14, 0x15, 0x16];
         let your_address = [0x17, 0x18, 0x19, 0x20];
         let server_address = [0x21, 0x22, 0x23, 0x24];
         let gateway_address = [0x25, 0x26, 0x27, 0x28];
         let client_hardware_address = &[0x29, 0x30, 0x31, 0x32, 0x33, 0x34];
-        let magic_cookie = [0x45, 0x46, 0x47, 0x48];
         let expected = DHCPMessage {
             op: DHCPOperation::Discover,
             hardware_type,
@@ -219,7 +230,6 @@ mod test {
             server_address,
             gateway_address,
             client_hardware_address,
-            magic_cookie,
             options: vec![],
         };
         let (rem, result) = parse_dhcp(TEST_MESSAGE_NO_OPTION).unwrap();
@@ -238,7 +248,6 @@ mod test {
             result.client_hardware_address,
             expected.client_hardware_address
         );
-        assert_eq!(result.magic_cookie, expected.magic_cookie);
         assert!(rem.is_empty());
     }
 
@@ -329,5 +338,16 @@ mod test {
         .concat();
         let (_, result) = parse_dhcp(&bytes).unwrap();
         assert_eq!(result.options, vec![DHCPOption::PathMTUPlateauTable(sizes)])
+    }
+
+    #[test]
+    fn should_have_broadcast_flag_set() {
+        let mut dhcp_with_flag = Vec::from(TEST_MESSAGE_NO_OPTION);
+        dhcp_with_flag[10] = 0b10000000;
+        dhcp_with_flag[11] = 0b00000000;
+        let (_, dhcp) = parse_dhcp(&dhcp_with_flag).unwrap();
+        println!("{:b}", u16::from_be_bytes([0b10000000, 0b00000000]));
+        println!("{}", u16::from_be_bytes([0b10000000, 0b00000000]));
+        assert!(dhcp.is_broadcast());
     }
 }
