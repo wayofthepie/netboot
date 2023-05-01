@@ -2,11 +2,15 @@ mod dhcp;
 
 use std::io;
 use tokio::net::UdpSocket;
+use tracing_subscriber::prelude::*;
 
 use crate::dhcp::parser::parse_dhcp;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .init();
     let sock = UdpSocket::bind("0.0.0.0:67").await?;
     let mut buf = [0; 1024];
     loop {
@@ -14,9 +18,8 @@ async fn main() -> io::Result<()> {
         println!("{:?} bytes received from {:?}", len, addr);
 
         let (rem, dhcp) = parse_dhcp(&buf).unwrap();
-        println!("{:02X?} discover mac", dhcp.client_hardware_address);
         println!("{:02X?} rem", rem);
-        println!("{:#?}", dhcp.options);
+        println!("{:#?}", dhcp);
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);
