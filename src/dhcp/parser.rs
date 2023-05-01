@@ -33,6 +33,7 @@ pub enum DHCPOption {
     SubnetMask(Ipv4Addr),
     LogServer(Vec<Ipv4Addr>),
     ResourceLocationProtocolServer(Vec<Ipv4Addr>),
+    PathMTUPlateauTable(Vec<u16>),
 }
 
 pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
@@ -106,6 +107,7 @@ const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
 const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
 const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
 const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
+const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
 
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
@@ -132,6 +134,12 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
             let (_, addresses) = parse_ip_addresses(data)?;
             Ok((rem, DHCPOption::ResourceLocationProtocolServer(addresses)))
         }
+        [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rem @ ..] => {
+            let (rem, data) = take(*len as usize)(rem)?;
+            // TODO: Make sure there are no bytes leftover here.
+            let (_, sizes) = many0(map(take_n_bytes::<2>, u16::from_be_bytes))(data)?;
+            Ok((rem, DHCPOption::PathMTUPlateauTable(sizes)))
+        }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
     }
 }
@@ -152,7 +160,8 @@ mod test {
 
     use crate::dhcp::parser::{
         parse_dhcp, DHCPMessage, DHCPOption, DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER,
-        DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
+        DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, DHCP_OPTION_RESOURCE_LOCATION_SERVER,
+        DHCP_OPTION_SUBNET_MASK,
     };
 
     const TEST_MESSAGE_NO_OPTION: &[u8] = &[
@@ -294,5 +303,20 @@ mod test {
             result.options,
             vec![DHCPOption::ResourceLocationProtocolServer(rlp_servers)]
         )
+    }
+
+    #[test]
+    fn should_parse_path_mtu_plateau_table() {
+        let sizes = vec![10u16, 20];
+        let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
+        let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 0x04];
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            dhcp_option.as_slice(),
+            sizes_bytes.as_slice(),
+        ]
+        .concat();
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        assert_eq!(result.options, vec![DHCPOption::PathMTUPlateauTable(sizes)])
     }
 }
