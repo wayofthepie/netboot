@@ -15,7 +15,7 @@ const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
 const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
 
 #[derive(Debug, PartialEq)]
-pub struct DHCPMessage {
+pub struct DHCPMessage<'a> {
     pub operation: DHCPOperation,
     pub hardware_type: HardwareType,
     pub hardware_len: u8,
@@ -27,6 +27,7 @@ pub struct DHCPMessage {
     pub your_address: Ipv4Addr,
     pub server_address: Ipv4Addr,
     pub gateway_address: Ipv4Addr,
+    pub client_hardware_address: &'a [u8],
     pub options: Vec<DHCPOption>,
 }
 
@@ -72,6 +73,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     // TODO make sure rest is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
+    let hardware_len = raw.hardware_len;
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
     let (rest, options) = many0(parse_dhcp_option)(raw.options)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
@@ -81,10 +83,11 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     let your_address = Ipv4Addr::from(*raw.your_address);
     let server_address = Ipv4Addr::from(*raw.server_address);
     let gateway_address = Ipv4Addr::from(*raw.gateway_address);
+    let (_, client_hardware_address) = take(hardware_len)(raw.client_hardware_address.as_slice())?;
     let dhcp = DHCPMessage {
         operation,
         hardware_type,
-        hardware_len: raw.hardware_len,
+        hardware_len,
         hops: raw.hops,
         xid,
         seconds,
@@ -93,6 +96,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
         your_address,
         server_address,
         gateway_address,
+        client_hardware_address,
         options,
     };
     Ok((rest, dhcp))
@@ -235,6 +239,10 @@ mod test {
     const YOUR_ADDRESS: &[u8; 4] = &[0x01, 0x01, 0x01, 0x01];
     const SERVER_ADDRESS: &[u8; 4] = &[0x02, 0x02, 0x02, 0x02];
     const GATEWAY_ADDRESS: &[u8; 4] = &[0x03, 0x03, 0x03, 0x03];
+    const CLIENT_HARDWARE_ADDRESS: &[u8; 16] = &[
+        0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+        0x03,
+    ];
 
     #[rustfmt::skip]
     fn test_message_no_option() -> Vec<u8> {
@@ -246,8 +254,8 @@ mod test {
         let your_address = YOUR_ADDRESS.to_vec();
         let server_address = SERVER_ADDRESS.to_vec();
         let gateway_address = GATEWAY_ADDRESS.to_vec();
-        let rest = vec![0x29, 0x30,
-            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
+        let client_hardware_address = CLIENT_HARDWARE_ADDRESS.to_vec();
+        let rest = vec![0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -259,7 +267,7 @@ mod test {
         [
             single_bytes, xid, seconds, flags,
             client_address, your_address, server_address,
-            gateway_address, rest
+            gateway_address, client_hardware_address ,rest
         ].concat()
     }
 
@@ -297,6 +305,10 @@ mod test {
         assert_eq!(
             dhcp.gateway_address,
             Ipv4Addr::from(u32::from_be_bytes(*GATEWAY_ADDRESS))
+        );
+        assert_eq!(
+            dhcp.client_hardware_address,
+            &CLIENT_HARDWARE_ADDRESS[..HARDWARE_LEN as usize]
         );
         assert_eq!(dhcp.options, vec![DHCPOption::ArpCacheTimeout(timeout_ms)]);
     }
