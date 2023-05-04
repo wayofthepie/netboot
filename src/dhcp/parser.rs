@@ -19,6 +19,7 @@ pub struct DHCPMessage {
     pub operation: DHCPOperation,
     pub hardware_type: HardwareType,
     pub hardware_len: u8,
+    pub hops: u8,
     pub options: Vec<DHCPOption>,
 }
 
@@ -73,6 +74,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
         operation,
         hardware_type,
         hardware_len: raw.hardware_len,
+        hops: raw.hops,
         options,
     };
     Ok((rem, dhcp))
@@ -221,10 +223,11 @@ mod test {
     const OPERATION: u8 = 0x01;
     const HARDWARE_TYPE: u8 = 0x01;
     const HARDWARE_LEN: u8 = 0x06;
+    const HOPS: u8 = 0x04;
 
     #[rustfmt::skip]
     const TEST_MESSAGE_NO_OPTION: &[u8] = &[
-        OPERATION, HARDWARE_TYPE, HARDWARE_LEN, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+        OPERATION, HARDWARE_TYPE, HARDWARE_LEN, HOPS, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
         0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
         0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -298,15 +301,13 @@ mod test {
             timeout_bytes,
         ]
         .concat();
-        let (remainder, result) = parse_dhcp(&bytes).unwrap();
+        let (remainder, dhcp) = parse_dhcp(&bytes).unwrap();
         assert!(remainder.is_empty());
-        assert_eq!(result.operation, DHCPOperation::Discover);
-        assert_eq!(result.hardware_type, HardwareType::Ethernet);
-        assert_eq!(result.hardware_len, HARDWARE_LEN);
-        assert_eq!(
-            result.options,
-            vec![DHCPOption::ArpCacheTimeout(timeout_ms)]
-        );
+        assert_eq!(dhcp.operation, DHCPOperation::Discover);
+        assert_eq!(dhcp.hardware_type, HardwareType::Ethernet);
+        assert_eq!(dhcp.hardware_len, HARDWARE_LEN);
+        assert_eq!(dhcp.hops, HOPS);
+        assert_eq!(dhcp.options, vec![DHCPOption::ArpCacheTimeout(timeout_ms)]);
     }
 
     #[test]
