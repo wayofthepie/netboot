@@ -116,8 +116,8 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                     server_address,
                     gateway_address,
                     client_hardware_address,
-                    _, // bootp
-                    _, // magic cookie
+                    _bootp,
+                    _magic_cookie,
                     options,
                 ),
             ): ParsedRemainder = tuple((
