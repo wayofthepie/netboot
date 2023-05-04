@@ -139,7 +139,7 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
         [DHCP_OPTION_ARP_CACHE_TIMEOUT, _, ref rem @ ..] => {
             let (rem, data) = take_n_bytes::<4>(rem)?;
             let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
-            Ok((rem, DHCPOption::ArpCacheTimeout(timeout / 100)))
+            Ok((rem, DHCPOption::ArpCacheTimeout(timeout)))
         }
         [DHCP_OPTION_SUBNET_MASK, _, ref rem @ ..] => {
             let (rem, data) = take_n_bytes::<4>(rem)?;
@@ -264,15 +264,26 @@ mod test {
 
     #[test]
     fn should_parse_dhcp_message() {
-        let bytes = TEST_MESSAGE_NO_OPTION;
-        let (remainder, result) = parse_dhcp(bytes).unwrap();
+        let timeout_ms = 600_u32;
+        let timeout_bytes = &timeout_ms.to_be_bytes();
+        let bytes = [
+            TEST_MESSAGE_NO_OPTION,
+            &[DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04],
+            timeout_bytes,
+        ]
+        .concat();
+        let (remainder, result) = parse_dhcp(&bytes).unwrap();
         assert!(remainder.is_empty());
         assert_eq!(result.operation, DHCPOperation::Discover);
+        assert_eq!(
+            result.options,
+            vec![DHCPOption::ArpCacheTimeout(timeout_ms)]
+        );
     }
 
     #[test]
     fn should_parse_arp_cache_timeout_option() {
-        let timeout = 60000_u32;
+        let timeout = 600_u32;
         let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
         let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04];
         let bytes = [
@@ -282,11 +293,7 @@ mod test {
         ]
         .concat();
         let (_, result) = parse_dhcp(&bytes).unwrap();
-        let expected_timeout = timeout / 100;
-        assert_eq!(
-            result.options,
-            vec![DHCPOption::ArpCacheTimeout(expected_timeout)]
-        )
+        assert_eq!(result.options, vec![DHCPOption::ArpCacheTimeout(timeout)])
     }
 
     #[test]
