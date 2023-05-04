@@ -8,13 +8,6 @@ use nom::IResult;
 
 use super::error::DHCPMessageError;
 
-const DHCP_OPTION_MESSAGE_TYPE: u8 = 53;
-const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 35;
-const DHCP_OPTION_SUBNET_MASK: u8 = 1;
-const DHCP_OPTION_LOG_SERVER: u8 = 7;
-const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 11;
-const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 25;
-
 #[derive(Debug, PartialEq)]
 pub struct DHCPMessage<'a> {
     pub operation: Operation,
@@ -50,6 +43,13 @@ pub enum HardwareType {
     Ethernet,
     Ieee802_11Wireless,
 }
+
+const OPTION_MESSAGE_TYPE: u8 = 53;
+const OPTION_ARP_CACHE_TIMEOUT: u8 = 35;
+const OPTION_SUBNET_MASK: u8 = 1;
+const OPTION_LOG_SERVER: u8 = 7;
+const OPTION_RESOURCE_LOCATION_SERVER: u8 = 11;
+const OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 25;
 
 #[derive(Debug, PartialEq)]
 pub enum Option {
@@ -93,7 +93,6 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     let server_address = Ipv4Addr::from(*raw.server_address);
     let gateway_address = Ipv4Addr::from(*raw.gateway_address);
     let (_, client_hardware_address) = take(hardware_len)(raw.client_hardware_address.as_slice())?;
-    tracing::debug!("{:#?}", raw);
     let dhcp = DHCPMessage {
         operation,
         hardware_type,
@@ -167,35 +166,35 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], Option, DHCPMessageError<&[u8]>> {
     match bytes {
-        [DHCP_OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
+        [OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
             [1, ..] => Ok((&rest[0..], Option::MessageType(MessageType::Discover))),
             _ => Err(nom::Err::Error(
                 DHCPMessageError::InvalidValueForOptionMessageType(rest[0]),
             )),
         },
-        [DHCP_OPTION_ARP_CACHE_TIMEOUT, _, ref rest @ ..] => {
+        [OPTION_ARP_CACHE_TIMEOUT, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
             Ok((rest, Option::ArpCacheTimeout(timeout)))
         }
-        [DHCP_OPTION_SUBNET_MASK, _, ref rest @ ..] => {
+        [OPTION_SUBNET_MASK, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
             Ok((rest, Option::SubnetMask(subnet_mask)))
         }
-        [DHCP_OPTION_LOG_SERVER, len, ref rest @ ..] => {
+        [OPTION_LOG_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
             Ok((rest, Option::LogServer(addresses)))
         }
-        [DHCP_OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
+        [OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
             Ok((rest, Option::ResourceLocationProtocolServer(addresses)))
         }
-        [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
+        [OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, sizes) =
@@ -241,7 +240,7 @@ mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, HardwareType, Operation, Option, DHCP_OPTION_ARP_CACHE_TIMEOUT,
+        parse_dhcp, HardwareType, Operation, Option, OPTION_ARP_CACHE_TIMEOUT,
     };
 
     const OPERATION: u8 = 1;
@@ -290,7 +289,7 @@ mod test {
         let timeout_bytes = &timeout_ms.to_be_bytes();
         let bytes = [
             test_message_no_option().as_slice(),
-            &[DHCP_OPTION_ARP_CACHE_TIMEOUT, 4],
+            &[OPTION_ARP_CACHE_TIMEOUT, 4],
             timeout_bytes,
         ]
         .concat();
@@ -373,9 +372,8 @@ mod test {
 
         use crate::dhcp::parser::{
             parse_dhcp, test::test_message_no_option, MessageType, Option,
-            DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER,
-            DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, DHCP_OPTION_RESOURCE_LOCATION_SERVER,
-            DHCP_OPTION_SUBNET_MASK,
+            OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER, OPTION_PATH_MTU_PLATEAU_TABLE,
+            OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
         };
 
         #[test]
@@ -393,7 +391,7 @@ mod test {
         fn arp_cache_timeout_option() {
             let timeout = 600_u32;
             let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
-            let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 4];
+            let dhcp_options: [u8; 2] = [OPTION_ARP_CACHE_TIMEOUT, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_options.as_slice(),
@@ -409,7 +407,7 @@ mod test {
             let subnet_mask = Ipv4Addr::new(255, 255, 255, 0);
             let subnet_mask_bytes: u32 = subnet_mask.into();
             let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_SUBNET_MASK, 4];
+            let dhcp_option: [u8; 2] = [OPTION_SUBNET_MASK, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -427,7 +425,7 @@ mod test {
                 .iter()
                 .flat_map(|&ip| u32::from(ip).to_be_bytes())
                 .collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_LOG_SERVER, 8];
+            let dhcp_option: [u8; 2] = [OPTION_LOG_SERVER, 8];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -445,7 +443,7 @@ mod test {
                 .iter()
                 .flat_map(|&ip| u32::from(ip).to_be_bytes())
                 .collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_RESOURCE_LOCATION_SERVER, 8];
+            let dhcp_option: [u8; 2] = [OPTION_RESOURCE_LOCATION_SERVER, 8];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -463,7 +461,7 @@ mod test {
         fn mtu_plateau_table() {
             let sizes = vec![10u16, 20];
             let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 4];
+            let dhcp_option: [u8; 2] = [OPTION_PATH_MTU_PLATEAU_TABLE, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
