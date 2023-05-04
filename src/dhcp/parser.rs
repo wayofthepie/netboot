@@ -53,7 +53,7 @@ pub enum DHCPOperation {
 #[derive(Debug, PartialEq)]
 pub enum HardwareType {
     Ethernet,
-    IEEE_802_11_Wireless,
+    Ieee802_11Wireless,
 }
 
 #[derive(Debug, PartialEq)]
@@ -146,7 +146,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 take_n_bytes::<4>,
                 nom::combinator::rest,
             ))(rem)?;
-            let discover = RawDHCPMessage {
+            let raw = RawDHCPMessage {
                 operation: op,
                 hardware_type,
                 hardware_len,
@@ -161,7 +161,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 client_hardware_address,
                 options,
             };
-            Ok((rem, discover))
+            Ok((rem, raw))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidData)),
     }
@@ -224,7 +224,7 @@ fn op_from_byte<'a>(byte: u8) -> IResult<(), DHCPOperation, DHCPMessageError<&'a
 fn hardware_type_from_byte<'a>(byte: u8) -> IResult<(), HardwareType, DHCPMessageError<&'a [u8]>> {
     match byte {
         1 => Ok(((), HardwareType::Ethernet)),
-        40 => Ok(((), HardwareType::IEEE_802_11_Wireless)),
+        40 => Ok(((), HardwareType::Ieee802_11Wireless)),
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidHardwareType(byte))),
     }
 }
@@ -330,7 +330,7 @@ mod test {
         bytes[1] = 40;
         let (remainder, result) = parse_dhcp(&bytes).unwrap();
         assert!(remainder.is_empty());
-        assert_eq!(result.hardware_type, HardwareType::IEEE_802_11_Wireless);
+        assert_eq!(result.hardware_type, HardwareType::Ieee802_11Wireless);
     }
 
     #[test]
