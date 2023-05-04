@@ -199,7 +199,6 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], Option, DHCPMessageError<&[
             // TODO: Make sure there are no bytes leftover here.
             let (_, sizes) =
                 many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
-            tracing::debug!("MTU PLATEAU [ len: {len}, sizes: {sizes:#?}]");
             Ok((rest, Option::PathMTUPlateauTable(sizes)))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
