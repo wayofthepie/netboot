@@ -70,8 +70,8 @@ struct RawDHCPMessage<'a> {
 pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
     // TODO make sure remainder is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
-    let (_, operation) = op_from_byte(raw.operation)?;
-    let (_, hardware_type) = hardware_type_from_byte(raw.hardware_type)?;
+    let operation = op_from_byte(raw.operation)?;
+    let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
     let (rem, options) = many0(parse_dhcp_option)(raw.options)?;
     let dhcp = DHCPMessage {
         operation,
@@ -201,17 +201,19 @@ fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessage
     many0(map(take_n_bytes::<4>, |&bytes| Ipv4Addr::from(bytes)))(bytes)
 }
 
-fn op_from_byte<'a>(byte: u8) -> IResult<(), DHCPOperation, DHCPMessageError<&'a [u8]>> {
+fn op_from_byte<'a>(byte: u8) -> Result<DHCPOperation, nom::Err<DHCPMessageError<&'a [u8]>>> {
     match byte {
-        0x01 => Ok(((), DHCPOperation::Discover)),
+        0x01 => Ok(DHCPOperation::Discover),
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidOperation)),
     }
 }
 
-fn hardware_type_from_byte<'a>(byte: u8) -> IResult<(), HardwareType, DHCPMessageError<&'a [u8]>> {
+fn hardware_type_from_byte<'a>(
+    byte: u8,
+) -> Result<HardwareType, nom::Err<DHCPMessageError<&'a [u8]>>> {
     match byte {
-        1 => Ok(((), HardwareType::Ethernet)),
-        40 => Ok(((), HardwareType::Ieee802_11Wireless)),
+        1 => Ok(HardwareType::Ethernet),
+        40 => Ok(HardwareType::Ieee802_11Wireless),
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidHardwareType(byte))),
     }
 }
