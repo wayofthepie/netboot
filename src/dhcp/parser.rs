@@ -98,22 +98,6 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
 fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageError<&[u8]>> {
     match bytes {
         &[operation, hardware_type, hardware_len, hops, ref rem @ ..] => {
-            type ParsedRemainder<'a> = (
-                &'a [u8],
-                (
-                    &'a [u8; 4],   // xid
-                    &'a [u8; 2],   // seconds
-                    &'a [u8; 2],   // flags
-                    &'a [u8; 4],   // client addr
-                    &'a [u8; 4],   // your addr
-                    &'a [u8; 4],   // server address
-                    &'a [u8; 4],   // gateway address
-                    &'a [u8; 16],  // client hardware address
-                    &'a [u8; 192], // bootp
-                    &'a [u8; 4],   // magic cookie
-                    &'a [u8],
-                ),
-            );
             let (
                 rem,
                 (
@@ -129,7 +113,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                     _magic_cookie,
                     options,
                 ),
-            ): ParsedRemainder = tuple((
+            ) = tuple((
                 take_n_bytes::<4>,
                 take_n_bytes::<2>,
                 take_n_bytes::<2>,
