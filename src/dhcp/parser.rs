@@ -8,11 +8,11 @@ use nom::IResult;
 
 use super::error::DHCPMessageError;
 
-const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
-const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
-const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
-const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
-const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
+const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 35;
+const DHCP_OPTION_SUBNET_MASK: u8 = 1;
+const DHCP_OPTION_LOG_SERVER: u8 = 7;
+const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 11;
+const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 25;
 
 #[derive(Debug, PartialEq)]
 pub struct DHCPMessage<'a> {
@@ -205,9 +205,9 @@ fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessage
 
 fn op_from_byte<'a>(byte: u8) -> Result<DHCPOperation, nom::Err<DHCPMessageError<&'a [u8]>>> {
     match byte {
-        0x01 => Ok(DHCPOperation::Discover),
-        0x02 => Ok(DHCPOperation::Offer),
-        0x04 => Ok(DHCPOperation::Acknowledgement),
+        1 => Ok(DHCPOperation::Discover),
+        2 => Ok(DHCPOperation::Offer),
+        4 => Ok(DHCPOperation::Acknowledgement),
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidOperation)),
     }
 }
@@ -230,21 +230,18 @@ mod test {
         parse_dhcp, DHCPOperation, DHCPOption, HardwareType, DHCP_OPTION_ARP_CACHE_TIMEOUT,
     };
 
-    const OPERATION: u8 = 0x01;
-    const HARDWARE_TYPE: u8 = 0x01;
-    const HARDWARE_LEN: u8 = 0x06;
-    const HOPS: u8 = 0x04;
-    const XID: &[u8; 4] = &[0x05, 0x06, 0x07, 0x08];
-    const SECONDS: &[u8; 2] = &[0x00, 0x01];
-    const FLAGS: &[u8; 2] = &[0x11, 0x12];
-    const CLIENT_ADDRESS: &[u8; 4] = &[0x00, 0x00, 0x00, 0x00];
-    const YOUR_ADDRESS: &[u8; 4] = &[0x01, 0x01, 0x01, 0x01];
-    const SERVER_ADDRESS: &[u8; 4] = &[0x02, 0x02, 0x02, 0x02];
-    const GATEWAY_ADDRESS: &[u8; 4] = &[0x03, 0x03, 0x03, 0x03];
-    const CLIENT_HARDWARE_ADDRESS: &[u8; 16] = &[
-        0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
-        0x03,
-    ];
+    const OPERATION: u8 = 1;
+    const HARDWARE_TYPE: u8 = 1;
+    const HARDWARE_LEN: u8 = 6;
+    const HOPS: u8 = 4;
+    const XID: &[u8; 4] = &[5, 6, 7, 8];
+    const SECONDS: &[u8; 2] = &[0, 1];
+    const FLAGS: &[u8; 2] = &[11, 12];
+    const CLIENT_ADDRESS: &[u8; 4] = &[0, 0, 0, 0];
+    const YOUR_ADDRESS: &[u8; 4] = &[1, 1, 1, 1];
+    const SERVER_ADDRESS: &[u8; 4] = &[2, 2, 2, 2];
+    const GATEWAY_ADDRESS: &[u8; 4] = &[3, 3, 3, 3];
+    const CLIENT_HARDWARE_ADDRESS: &[u8; 16] = &[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
 
     #[rustfmt::skip]
     fn test_message_no_option() -> Vec<u8> {
@@ -264,7 +261,7 @@ mod test {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 45, 46, 47, 48
         ];
         [
             single_bytes, xid, seconds, flags,
@@ -279,7 +276,7 @@ mod test {
         let timeout_bytes = &timeout_ms.to_be_bytes();
         let bytes = [
             test_message_no_option().as_slice(),
-            &[DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04],
+            &[DHCP_OPTION_ARP_CACHE_TIMEOUT, 4],
             timeout_bytes,
         ]
         .concat();
@@ -343,7 +340,7 @@ mod test {
         #[test]
         fn dhcp_offer() {
             let mut bytes = test_message_no_option();
-            bytes[0] = 0x02;
+            bytes[0] = 2;
             let (_, result) = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, DHCPOperation::Offer);
         }
@@ -351,7 +348,7 @@ mod test {
         #[test]
         fn dhcp_acknowledgement() {
             let mut bytes = test_message_no_option();
-            bytes[0] = 0x04;
+            bytes[0] = 4;
             let (_, result) = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, DHCPOperation::Acknowledgement);
         }
@@ -370,7 +367,7 @@ mod test {
         fn arp_cache_timeout_option() {
             let timeout = 600_u32;
             let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
-            let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04];
+            let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_options.as_slice(),
@@ -386,7 +383,7 @@ mod test {
             let subnet_mask = Ipv4Addr::new(255, 255, 255, 0);
             let subnet_mask_bytes: u32 = subnet_mask.into();
             let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_SUBNET_MASK, 0x04];
+            let dhcp_option: [u8; 2] = [DHCP_OPTION_SUBNET_MASK, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -404,7 +401,7 @@ mod test {
                 .iter()
                 .flat_map(|&ip| u32::from(ip).to_be_bytes())
                 .collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_LOG_SERVER, 0x08];
+            let dhcp_option: [u8; 2] = [DHCP_OPTION_LOG_SERVER, 8];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -422,7 +419,7 @@ mod test {
                 .iter()
                 .flat_map(|&ip| u32::from(ip).to_be_bytes())
                 .collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_RESOURCE_LOCATION_SERVER, 0x08];
+            let dhcp_option: [u8; 2] = [DHCP_OPTION_RESOURCE_LOCATION_SERVER, 8];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
@@ -440,7 +437,7 @@ mod test {
         fn mtu_plateau_table() {
             let sizes = vec![10u16, 20];
             let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
-            let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 0x04];
+            let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 4];
             let bytes = [
                 &test_message_no_option(),
                 dhcp_option.as_slice(),
