@@ -64,9 +64,6 @@ struct RawDHCPMessage<'a> {
     your_address: &'a [u8; 4],
     server_address: &'a [u8; 4],
     gateway_address: &'a [u8; 4],
-    // This can be more than just a mac address, hence why it's 16 bytes. For example
-    // it could be a GUID up to 128 bits in length. The length that needs to be
-    // parsed is defined in hardware_len.
     client_hardware_address: &'a [u8; 16],
     options: &'a [u8],
 }
