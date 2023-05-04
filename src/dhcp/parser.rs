@@ -111,7 +111,6 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 take_n_bytes::<4>,
                 nom::combinator::rest,
             ))(rem)?;
-            //let (rem, options) = many0(parse_dhcp_option)(rem)?;
             let discover = RawDHCPMessage {
                 operation: op,
                 hardware_type,
