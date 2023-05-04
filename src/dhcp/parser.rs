@@ -319,7 +319,16 @@ mod test {
         use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option, HardwareType};
 
         #[test]
-        fn ieee_802_11_wireless_hardware_type() {
+        fn ethernet() {
+            let mut bytes = test_message_no_option();
+            bytes[1] = 1;
+            let (rest, result) = parse_dhcp(&bytes).unwrap();
+            assert!(rest.is_empty());
+            assert_eq!(result.hardware_type, HardwareType::Ethernet);
+        }
+
+        #[test]
+        fn ieee_802_11_wireless() {
             let mut bytes = test_message_no_option();
             bytes[1] = 40;
             let (rest, result) = parse_dhcp(&bytes).unwrap();
