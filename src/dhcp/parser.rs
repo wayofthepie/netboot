@@ -23,6 +23,8 @@ pub struct DHCPMessage {
     pub xid: u32,
     pub seconds: u16,
     flags: u16,
+    pub client_address: Ipv4Addr,
+    pub your_address: Ipv4Addr,
     pub options: Vec<DHCPOption>,
 }
 
@@ -73,14 +75,21 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     let operation = op_from_byte(raw.operation)?;
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
     let (rem, options) = many0(parse_dhcp_option)(raw.options)?;
+    let xid = u32::from_be_bytes(raw.xid.to_owned());
+    let seconds = u16::from_be_bytes(raw.seconds.to_owned());
+    let flags = u16::from_be_bytes(raw.flags.to_owned());
+    let client_address = Ipv4Addr::from(*raw.client_address);
+    let your_address = Ipv4Addr::from(*raw.your_address);
     let dhcp = DHCPMessage {
         operation,
         hardware_type,
         hardware_len: raw.hardware_len,
         hops: raw.hops,
-        xid: u32::from_be_bytes(raw.xid.to_owned()),
-        seconds: u16::from_be_bytes(raw.seconds.to_owned()),
-        flags: u16::from_be_bytes(raw.flags.to_owned()),
+        xid,
+        seconds,
+        flags,
+        client_address,
+        your_address,
         options,
     };
     Ok((rem, dhcp))
@@ -235,6 +244,8 @@ mod test {
     const XID: &[u8; 4] = &[0x05, 0x06, 0x07, 0x08];
     const SECONDS: &[u8; 2] = &[0x00, 0x01];
     const FLAGS: &[u8; 2] = &[0x11, 0x12];
+    const CLIENT_ADDRESS: &[u8; 4] = &[0x00, 0x00, 0x00, 0x00];
+    const YOUR_ADDRESS: &[u8; 4] = &[0x01, 0x01, 0x01, 0x01];
 
     #[rustfmt::skip]
     fn test_message_no_option() -> Vec<u8> {
@@ -242,8 +253,9 @@ mod test {
         let xid = XID.to_vec();
         let seconds = SECONDS.to_vec();
         let flags = FLAGS.to_vec();
-        let rest = vec![0x13, 0x14, 0x15,
-            0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
+        let client_address = CLIENT_ADDRESS.to_vec();
+        let your_address = YOUR_ADDRESS.to_vec();
+        let rest = vec![0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
             0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -253,7 +265,7 @@ mod test {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48
         ];
-        [single_bytes, xid, seconds, flags, rest].concat()
+        [single_bytes, xid, seconds, flags, client_address, your_address, rest].concat()
     }
 
     #[test]
@@ -275,6 +287,15 @@ mod test {
         assert_eq!(dhcp.xid, u32::from_be_bytes(*XID));
         assert_eq!(dhcp.seconds, u16::from_be_bytes(*SECONDS));
         assert_eq!(dhcp.flags, u16::from_be_bytes(*FLAGS));
+        assert_eq!(
+            dhcp.client_address,
+            Ipv4Addr::from(u32::from_be_bytes(*CLIENT_ADDRESS))
+        );
+        assert_eq!(
+            dhcp.your_address,
+            Ipv4Addr::from(u32::from_be_bytes(*YOUR_ADDRESS))
+        );
+
         assert_eq!(dhcp.options, vec![DHCPOption::ArpCacheTimeout(timeout_ms)]);
     }
 
