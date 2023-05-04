@@ -17,9 +17,8 @@ async fn main() -> io::Result<()> {
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
 
-        let (rem, dhcp) = parse_dhcp(&buf).unwrap();
-        println!("{:02X?} rem", rem);
-        println!("{:#?}", dhcp.options);
+        let (_, dhcp) = parse_dhcp(&buf).unwrap();
+        println!("{:#?}", dhcp);
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);
