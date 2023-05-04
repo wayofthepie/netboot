@@ -20,6 +20,7 @@ pub struct DHCPMessage {
     pub hardware_type: HardwareType,
     pub hardware_len: u8,
     pub hops: u8,
+    pub xid: u32,
     pub options: Vec<DHCPOption>,
 }
 
@@ -75,6 +76,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
         hardware_type,
         hardware_len: raw.hardware_len,
         hops: raw.hops,
+        xid: u32::from_be_bytes(raw.xid.to_owned()),
         options,
     };
     Ok((rem, dhcp))
@@ -215,8 +217,8 @@ mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, parse_raw_dhcp, DHCPOperation, DHCPOption, HardwareType, RawDHCPMessage,
-        DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
+        parse_dhcp, DHCPOperation, DHCPOption, HardwareType, DHCP_OPTION_ARP_CACHE_TIMEOUT,
+        DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
         DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
     };
 
@@ -224,71 +226,24 @@ mod test {
     const HARDWARE_TYPE: u8 = 0x01;
     const HARDWARE_LEN: u8 = 0x06;
     const HOPS: u8 = 0x04;
+    const XID: &[u8; 4] = &[0x05, 0x06, 0x07, 0x08];
 
     #[rustfmt::skip]
-    const TEST_MESSAGE_NO_OPTION: &[u8] = &[
-        OPERATION, HARDWARE_TYPE, HARDWARE_LEN, HOPS, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
-        0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
-        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48,
-    ];
-
-    // TODO temporary, until fully refactored
-    #[test]
-    fn should_parse_dhcp_message_to_raw() {
-        let op = 0x01;
-        let hardware_type = 0x01;
-        let hardware_len = 0x06;
-        let hops = 0x04;
-        let xid = &[0x05, 0x06, 0x07, 0x08];
-        let seconds = &[0x09, 0x10];
-        let flags = &[0x11, 0x12];
-        let client_address = &[0x13, 0x14, 0x15, 0x16];
-        let your_address = &[0x17, 0x18, 0x19, 0x20];
-        let server_address = &[0x21, 0x22, 0x23, 0x24];
-        let gateway_address = &[0x25, 0x26, 0x27, 0x28];
-        let client_hardware_address = &[
-            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
-            0x43, 0x44,
+    fn test_message_no_option() -> Vec<u8> {
+        let single_bytes = vec![OPERATION, HARDWARE_TYPE, HARDWARE_LEN, HOPS];
+        let xid = XID.to_vec();
+        let rest = vec![0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+            0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
+            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48
         ];
-        let expected = RawDHCPMessage {
-            operation: op,
-            hardware_type,
-            hardware_len,
-            hops,
-            xid,
-            seconds,
-            flags,
-            client_address,
-            your_address,
-            server_address,
-            gateway_address,
-            client_hardware_address,
-            options: &[],
-        };
-        let (rem, result) = parse_raw_dhcp(TEST_MESSAGE_NO_OPTION).unwrap();
-        assert_eq!(result.operation, expected.operation);
-        assert_eq!(result.hardware_type, expected.hardware_type);
-        assert_eq!(result.hardware_len, expected.hardware_len);
-        assert_eq!(result.hops, expected.hops);
-        assert_eq!(result.xid, expected.xid);
-        assert_eq!(result.seconds, expected.seconds);
-        assert_eq!(result.flags, expected.flags);
-        assert_eq!(result.client_address, expected.client_address);
-        assert_eq!(result.your_address, expected.your_address);
-        assert_eq!(result.server_address, expected.server_address);
-        assert_eq!(result.gateway_address, expected.gateway_address);
-        assert_eq!(
-            result.client_hardware_address,
-            expected.client_hardware_address
-        );
-        assert!(rem.is_empty());
+        [single_bytes, xid, rest].concat()
     }
 
     #[test]
@@ -296,7 +251,7 @@ mod test {
         let timeout_ms = 600_u32;
         let timeout_bytes = &timeout_ms.to_be_bytes();
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            test_message_no_option().as_slice(),
             &[DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04],
             timeout_bytes,
         ]
@@ -307,12 +262,13 @@ mod test {
         assert_eq!(dhcp.hardware_type, HardwareType::Ethernet);
         assert_eq!(dhcp.hardware_len, HARDWARE_LEN);
         assert_eq!(dhcp.hops, HOPS);
+        assert_eq!(dhcp.xid, u32::from_be_bytes(*XID));
         assert_eq!(dhcp.options, vec![DHCPOption::ArpCacheTimeout(timeout_ms)]);
     }
 
     #[test]
     fn should_parse_with_ieee_802_11_wireless_hardware_type() {
-        let mut bytes = TEST_MESSAGE_NO_OPTION.to_owned();
+        let mut bytes = test_message_no_option();
         bytes[1] = 40;
         let (remainder, result) = parse_dhcp(&bytes).unwrap();
         assert!(remainder.is_empty());
@@ -325,7 +281,7 @@ mod test {
         let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
         let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04];
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            &test_message_no_option(),
             dhcp_options.as_slice(),
             timeout_bytes.as_slice(),
         ]
@@ -341,7 +297,7 @@ mod test {
         let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
         let dhcp_option: [u8; 2] = [DHCP_OPTION_SUBNET_MASK, 0x04];
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            &test_message_no_option(),
             dhcp_option.as_slice(),
             subnet_mask_bytes.as_slice(),
         ]
@@ -359,7 +315,7 @@ mod test {
             .collect();
         let dhcp_option: [u8; 2] = [DHCP_OPTION_LOG_SERVER, 0x08];
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            &test_message_no_option(),
             dhcp_option.as_slice(),
             log_servers_bytes.as_slice(),
         ]
@@ -377,7 +333,7 @@ mod test {
             .collect();
         let dhcp_option: [u8; 2] = [DHCP_OPTION_RESOURCE_LOCATION_SERVER, 0x08];
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            &test_message_no_option(),
             dhcp_option.as_slice(),
             rlp_servers_bytes.as_slice(),
         ]
@@ -395,7 +351,7 @@ mod test {
         let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
         let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 0x04];
         let bytes = [
-            TEST_MESSAGE_NO_OPTION,
+            &test_message_no_option(),
             dhcp_option.as_slice(),
             sizes_bytes.as_slice(),
         ]
