@@ -319,7 +319,7 @@ mod test {
         use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option, HardwareType};
 
         #[test]
-        fn should_parse_with_ieee_802_11_wireless_hardware_type() {
+        fn ieee_802_11_wireless_hardware_type() {
             let mut bytes = test_message_no_option();
             bytes[1] = 40;
             let (rest, result) = parse_dhcp(&bytes).unwrap();
@@ -332,7 +332,7 @@ mod test {
         use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option, DHCPOperation};
 
         #[test]
-        fn should_parse_dhcp_offer() {
+        fn dhcp_offer() {
             let mut bytes = test_message_no_option();
             bytes[0] = 0x02;
             let (_, result) = parse_dhcp(&bytes).unwrap();
@@ -340,7 +340,7 @@ mod test {
         }
 
         #[test]
-        fn should_parse_dhcp_acknowledgement() {
+        fn dhcp_acknowledgement() {
             let mut bytes = test_message_no_option();
             bytes[0] = 0x04;
             let (_, result) = parse_dhcp(&bytes).unwrap();
@@ -358,7 +358,7 @@ mod test {
         };
 
         #[test]
-        fn should_parse_arp_cache_timeout_option() {
+        fn arp_cache_timeout_option() {
             let timeout = 600_u32;
             let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
             let dhcp_options: [u8; 2] = [DHCP_OPTION_ARP_CACHE_TIMEOUT, 0x04];
@@ -373,7 +373,7 @@ mod test {
         }
 
         #[test]
-        fn should_parse_subnet_mask_option() {
+        fn subnet_mask_option() {
             let subnet_mask = Ipv4Addr::new(255, 255, 255, 0);
             let subnet_mask_bytes: u32 = subnet_mask.into();
             let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
@@ -389,7 +389,7 @@ mod test {
         }
 
         #[test]
-        fn should_parse_log_server_option() {
+        fn log_server_option() {
             let log_servers = vec![Ipv4Addr::new(255, 255, 255, 0), Ipv4Addr::new(1, 1, 1, 1)];
             let log_servers_bytes: Vec<u8> = log_servers
                 .iter()
@@ -407,7 +407,7 @@ mod test {
         }
 
         #[test]
-        fn should_parse_resource_location_server_option() {
+        fn location_server_option() {
             let rlp_servers = vec![Ipv4Addr::new(255, 255, 255, 0), Ipv4Addr::new(1, 1, 1, 1)];
             let rlp_servers_bytes: Vec<u8> = rlp_servers
                 .iter()
@@ -428,7 +428,7 @@ mod test {
         }
 
         #[test]
-        fn should_parse_path_mtu_plateau_table() {
+        fn mtu_plateau_table() {
             let sizes = vec![10u16, 20];
             let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
             let dhcp_option: [u8; 2] = [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, 0x04];
