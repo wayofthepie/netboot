@@ -34,6 +34,7 @@ pub struct DHCPMessage<'a> {
 #[derive(Debug, PartialEq)]
 pub enum DHCPOperation {
     Discover,
+    Offer,
 }
 
 // The hardware types are defined in https://www.rfc-editor.org/rfc/rfc1700.
@@ -204,6 +205,7 @@ fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessage
 fn op_from_byte<'a>(byte: u8) -> Result<DHCPOperation, nom::Err<DHCPMessageError<&'a [u8]>>> {
     match byte {
         0x01 => Ok(DHCPOperation::Discover),
+        0x02 => Ok(DHCPOperation::Offer),
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidOperation)),
     }
 }
@@ -320,6 +322,14 @@ mod test {
         let (rest, result) = parse_dhcp(&bytes).unwrap();
         assert!(rest.is_empty());
         assert_eq!(result.hardware_type, HardwareType::Ieee802_11Wireless);
+    }
+
+    #[test]
+    fn should_parse_dhcp_offer() {
+        let mut bytes = test_message_no_option();
+        bytes[0] = 0x02;
+        let (_, result) = parse_dhcp(&bytes).unwrap();
+        assert_eq!(result.operation, DHCPOperation::Offer);
     }
 
     #[test]
