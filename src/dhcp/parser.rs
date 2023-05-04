@@ -17,13 +17,43 @@ const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
 #[derive(Debug, PartialEq)]
 pub struct DHCPMessage {
     pub operation: DHCPOperation,
+    pub hardware_type: HardwareType,
     pub options: Vec<DHCPOption>,
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum DHCPOperation {
-    #[default]
     Discover,
+}
+
+// The hardware types are defined in https://www.rfc-editor.org/rfc/rfc1700.
+// Number Hardware Type (hrd)
+// ------ -----------------------------------
+// 1 Ethernet (10Mb)
+// 2 Experimental Ethernet (3Mb)
+// 3 Amateur Radio AX.25
+// 4 Proteon ProNET Token Ring
+// 5 Chaos
+// 6 IEEE 802 Networks
+// 7 ARCNET
+// 8 Hyperchannel
+// 9 Lanstar
+// 10 Autonet Short Address
+// 11 LocalTalk
+// 12 LocalNet (IBM PCNet or SYTEK LocalNET)
+// 13 Ultra link
+// 14 SMDS
+// 15 Frame Relay
+// 16 Asynchronous Transmission Mode (ATM)
+// 17 HDLC
+// 18 Fibre Channel
+// 19 Asynchronous Transmission Mode (ATM)
+// 20 Serial Line
+// 21 Asynchronous Transmission Mode (ATM)
+#[derive(Debug, PartialEq)]
+pub enum HardwareType {
+    Ethernet,
+    IEEE_802_11_Wireless,
 }
 
 #[derive(Debug, PartialEq)]
@@ -59,8 +89,13 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     // TODO make sure remainder is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let (_, operation) = op_from_byte(raw.operation)?;
+    let (_, hardware_type) = hardware_type_from_byte(raw.hardware_type)?;
     let (rem, options) = many0(parse_dhcp_option)(raw.options)?;
-    let dhcp = DHCPMessage { operation, options };
+    let dhcp = DHCPMessage {
+        operation,
+        hardware_type,
+        options,
+    };
     Ok((rem, dhcp))
 }
 
@@ -186,12 +221,20 @@ fn op_from_byte<'a>(byte: u8) -> IResult<(), DHCPOperation, DHCPMessageError<&'a
     }
 }
 
+fn hardware_type_from_byte<'a>(byte: u8) -> IResult<(), HardwareType, DHCPMessageError<&'a [u8]>> {
+    match byte {
+        1 => Ok(((), HardwareType::Ethernet)),
+        40 => Ok(((), HardwareType::IEEE_802_11_Wireless)),
+        _ => Err(nom::Err::Error(DHCPMessageError::InvalidHardwareType(byte))),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, parse_raw_dhcp, DHCPOperation, DHCPOption, RawDHCPMessage,
+        parse_dhcp, parse_raw_dhcp, DHCPOperation, DHCPOption, HardwareType, RawDHCPMessage,
         DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
         DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
     };
@@ -274,10 +317,20 @@ mod test {
         let (remainder, result) = parse_dhcp(&bytes).unwrap();
         assert!(remainder.is_empty());
         assert_eq!(result.operation, DHCPOperation::Discover);
+        assert_eq!(result.hardware_type, HardwareType::Ethernet);
         assert_eq!(
             result.options,
             vec![DHCPOption::ArpCacheTimeout(timeout_ms)]
         );
+    }
+
+    #[test]
+    fn should_parse_with_ieee_802_11_wireless_hardware_type() {
+        let mut bytes = TEST_MESSAGE_NO_OPTION.to_owned();
+        bytes[1] = 40;
+        let (remainder, result) = parse_dhcp(&bytes).unwrap();
+        assert!(remainder.is_empty());
+        assert_eq!(result.hardware_type, HardwareType::IEEE_802_11_Wireless);
     }
 
     #[test]

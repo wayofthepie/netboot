@@ -4,6 +4,7 @@ use nom::error::{ErrorKind, ParseError};
 pub enum DHCPMessageError<I> {
     InvalidData,
     InvalidOperation,
+    InvalidHardwareType(u8),
     NotYetImplemented,
     NomError(nom::error::Error<I>),
 }
