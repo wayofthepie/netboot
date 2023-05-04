@@ -22,6 +22,7 @@ pub struct DHCPMessage {
     pub hops: u8,
     pub xid: u32,
     pub seconds: u16,
+    flags: u16,
     pub options: Vec<DHCPOption>,
 }
 
@@ -79,6 +80,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
         hops: raw.hops,
         xid: u32::from_be_bytes(raw.xid.to_owned()),
         seconds: u16::from_be_bytes(raw.seconds.to_owned()),
+        flags: u16::from_be_bytes(raw.flags.to_owned()),
         options,
     };
     Ok((rem, dhcp))
@@ -230,13 +232,15 @@ mod test {
     const HOPS: u8 = 0x04;
     const XID: &[u8; 4] = &[0x05, 0x06, 0x07, 0x08];
     const SECONDS: &[u8; 2] = &[0x00, 0x01];
+    const FLAGS: &[u8; 2] = &[0x11, 0x12];
 
     #[rustfmt::skip]
     fn test_message_no_option() -> Vec<u8> {
         let single_bytes = vec![OPERATION, HARDWARE_TYPE, HARDWARE_LEN, HOPS];
         let xid = XID.to_vec();
         let seconds = SECONDS.to_vec();
-        let rest = vec![0x11, 0x12, 0x13, 0x14, 0x15,
+        let flags = FLAGS.to_vec();
+        let rest = vec![0x13, 0x14, 0x15,
             0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30,
             0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -247,7 +251,7 @@ mod test {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48
         ];
-        [single_bytes, xid, seconds, rest].concat()
+        [single_bytes, xid, seconds, flags, rest].concat()
     }
 
     #[test]
@@ -268,6 +272,7 @@ mod test {
         assert_eq!(dhcp.hops, HOPS);
         assert_eq!(dhcp.xid, u32::from_be_bytes(*XID));
         assert_eq!(dhcp.seconds, u16::from_be_bytes(*SECONDS));
+        assert_eq!(dhcp.flags, u16::from_be_bytes(*FLAGS));
         assert_eq!(dhcp.options, vec![DHCPOption::ArpCacheTimeout(timeout_ms)]);
     }
 
