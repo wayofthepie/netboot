@@ -9,7 +9,7 @@ use super::error::DHCPMessageError;
 
 #[derive(Debug, Default)]
 pub struct DHCPMessage<'a> {
-    pub op: DHCPOperation,
+    pub op: u8,
     pub hardware_type: u8,
     pub hardware_len: u8,
     pub hops: u8, // number of relays
@@ -102,7 +102,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
             let (_, client_hardware_address) = take(hardware_len)(client_hardware_address)?;
             let flags = u16::from_be_bytes(flags);
             let discover = DHCPMessage {
-                op: op_from_byte(op)?.1,
+                op,
                 hardware_type,
                 hardware_len,
                 hops,
@@ -206,6 +206,7 @@ mod test {
 
     #[test]
     fn should_parse_dhcp_discover() {
+        let op = 0x01;
         let hardware_type = 0x01;
         let hardware_len = 0x06;
         let hops = 0x04;
@@ -218,7 +219,7 @@ mod test {
         let gateway_address = [0x25, 0x26, 0x27, 0x28];
         let client_hardware_address = &[0x29, 0x30, 0x31, 0x32, 0x33, 0x34];
         let expected = DHCPMessage {
-            op: DHCPOperation::Discover,
+            op,
             hardware_type,
             hardware_len,
             hops,
