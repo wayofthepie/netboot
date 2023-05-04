@@ -1,42 +1,23 @@
 use std::net::Ipv4Addr;
 
+use nom::bytes::complete::take;
 use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::tuple;
-use nom::{bytes::complete::take, IResult};
+use nom::IResult;
 
 use super::error::DHCPMessageError;
 
-#[derive(Debug, Default)]
-pub struct DHCPMessage<'a> {
-    pub op: u8,
-    pub hardware_type: u8,
-    pub hardware_len: u8,
-    pub hops: u8, // number of relays
-    pub xid: [u8; 4],
-    pub seconds: [u8; 2],
-    pub flags: u16,
-    pub client_address: [u8; 4],
-    pub your_address: [u8; 4],
-    pub server_address: [u8; 4],
-    pub gateway_address: [u8; 4],
-    // This can be more than just a mac address, hence why it's 16 bytes. For example
-    // it could be a GUID up to 128 bits in length. The length that needs to be
-    // parsed is defined in hardware_len.
-    pub client_hardware_address: &'a [u8],
+const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
+const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
+const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
+const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
+const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
+
+#[derive(Debug, PartialEq)]
+pub struct DHCPMessage {
+    pub operation: DHCPOperation,
     pub options: Vec<DHCPOption>,
-}
-
-impl DHCPMessage<'_> {
-    const BROADCAST_FLAG_BIT: usize = 15;
-
-    pub fn is_broadcast(&self) -> bool {
-        self.is_bit_set_in_flags(Self::BROADCAST_FLAG_BIT)
-    }
-
-    fn is_bit_set_in_flags(&self, n: usize) -> bool {
-        self.flags & (1 << n) != 0
-    }
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -54,22 +35,52 @@ pub enum DHCPOption {
     PathMTUPlateauTable(Vec<u16>),
 }
 
+#[derive(Debug)]
+struct RawDHCPMessage<'a> {
+    operation: u8,
+    hardware_type: u8,
+    hardware_len: u8,
+    hops: u8, // number of relays
+    xid: &'a [u8; 4],
+    seconds: &'a [u8; 2],
+    flags: &'a [u8; 2],
+    client_address: &'a [u8; 4],
+    your_address: &'a [u8; 4],
+    server_address: &'a [u8; 4],
+    gateway_address: &'a [u8; 4],
+    // This can be more than just a mac address, hence why it's 16 bytes. For example
+    // it could be a GUID up to 128 bits in length. The length that needs to be
+    // parsed is defined in hardware_len.
+    client_hardware_address: &'a [u8],
+    options: &'a [u8],
+}
+
 pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
+    // TODO make sure remainder is empty
+    let (_, raw) = parse_raw_dhcp(bytes)?;
+    let (_, operation) = op_from_byte(raw.operation)?;
+    let (rem, options) = many0(parse_dhcp_option)(raw.options)?;
+    let dhcp = DHCPMessage { operation, options };
+    Ok((rem, dhcp))
+}
+
+fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageError<&[u8]>> {
     match bytes {
         &[op, hardware_type, hardware_len, hops, ref rem @ ..] => {
             type ParsedRemainder<'a> = (
                 &'a [u8],
                 (
-                    [u8; 4],   // xid
-                    [u8; 2],   // seconds
-                    [u8; 2],   // flags
-                    [u8; 4],   // client addr
-                    [u8; 4],   // your addr
-                    [u8; 4],   // server address
-                    [u8; 4],   // gateway address
-                    &'a [u8],  // client hardware address
-                    [u8; 192], // bootp
-                    [u8; 4],   // magic cookie
+                    &'a [u8; 4],   // xid
+                    &'a [u8; 2],   // seconds
+                    &'a [u8; 2],   // flags
+                    &'a [u8; 4],   // client addr
+                    &'a [u8; 4],   // your addr
+                    &'a [u8; 4],   // server address
+                    &'a [u8; 4],   // gateway address
+                    &'a [u8; 16],  // client hardware address
+                    &'a [u8; 192], // bootp
+                    &'a [u8; 4],   // magic cookie
+                    &'a [u8],
                 ),
             );
             let (
@@ -85,6 +96,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                     client_hardware_address,
                     _, // bootp
                     _, // magic cookie
+                    options,
                 ),
             ): ParsedRemainder = tuple((
                 take_n_bytes::<4>,
@@ -94,15 +106,14 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
                 take_n_bytes::<4>,
                 take_n_bytes::<4>,
                 take_n_bytes::<4>,
-                take(16usize),
+                take_n_bytes::<16usize>,
                 take_n_bytes::<192>,
                 take_n_bytes::<4>,
+                nom::combinator::rest,
             ))(rem)?;
-            let (rem, options) = many0(parse_dhcp_option)(rem)?;
-            let (_, client_hardware_address) = take(hardware_len)(client_hardware_address)?;
-            let flags = u16::from_be_bytes(flags);
-            let discover = DHCPMessage {
-                op,
+            //let (rem, options) = many0(parse_dhcp_option)(rem)?;
+            let discover = RawDHCPMessage {
+                operation: op,
                 hardware_type,
                 hardware_len,
                 hops,
@@ -122,12 +133,6 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     }
 }
 
-const DHCP_OPTION_ARP_CACHE_TIMEOUT: u8 = 0x035;
-const DHCP_OPTION_SUBNET_MASK: u8 = 0x01;
-const DHCP_OPTION_LOG_SERVER: u8 = 0x07;
-const DHCP_OPTION_RESOURCE_LOCATION_SERVER: u8 = 0x11;
-const DHCP_OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 0x25;
-
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
     match bytes {
@@ -138,7 +143,7 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
         }
         [DHCP_OPTION_SUBNET_MASK, _, ref rem @ ..] => {
             let (rem, data) = take_n_bytes::<4>(rem)?;
-            let subnet_mask = Ipv4Addr::from(data);
+            let subnet_mask = Ipv4Addr::from(*data);
             Ok((rem, DHCPOption::SubnetMask(subnet_mask)))
         }
         [DHCP_OPTION_LOG_SERVER, len, ref rem @ ..] => {
@@ -156,7 +161,8 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
         [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rem @ ..] => {
             let (rem, data) = take(*len as usize)(rem)?;
             // TODO: Make sure there are no bytes leftover here.
-            let (_, sizes) = many0(map(take_n_bytes::<2>, u16::from_be_bytes))(data)?;
+            let (_, sizes) =
+                many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
             tracing::debug!("MTU PLATEAU [ len: {len}, sizes: {sizes:#?}]");
             Ok((rem, DHCPOption::PathMTUPlateauTable(sizes)))
         }
@@ -164,14 +170,14 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageErro
     }
 }
 
-fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], [u8; N], DHCPMessageError<&[u8]>> {
+fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], &[u8; N], DHCPMessageError<&[u8]>> {
     map(take(N), |client_address: &[u8]| {
         client_address.try_into().unwrap()
     })(bytes)
 }
 
 fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DHCPMessageError<&[u8]>> {
-    many0(map(take_n_bytes::<4>, Ipv4Addr::from))(bytes)
+    many0(map(take_n_bytes::<4>, |&bytes| Ipv4Addr::from(bytes)))(bytes)
 }
 
 fn op_from_byte<'a>(byte: u8) -> IResult<(), DHCPOperation, DHCPMessageError<&'a [u8]>> {
@@ -186,8 +192,8 @@ mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, DHCPMessage, DHCPOperation, DHCPOption, DHCP_OPTION_ARP_CACHE_TIMEOUT,
-        DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
+        parse_dhcp, parse_raw_dhcp, DHCPOperation, DHCPOption, RawDHCPMessage,
+        DHCP_OPTION_ARP_CACHE_TIMEOUT, DHCP_OPTION_LOG_SERVER, DHCP_OPTION_PATH_MTU_PLATEAU_TABLE,
         DHCP_OPTION_RESOURCE_LOCATION_SERVER, DHCP_OPTION_SUBNET_MASK,
     };
 
@@ -204,22 +210,26 @@ mod test {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x45, 0x46, 0x47, 0x48,
     ];
 
+    // TODO temporary, until fully refactored
     #[test]
-    fn should_parse_dhcp_discover() {
+    fn should_parse_dhcp_message_to_raw() {
         let op = 0x01;
         let hardware_type = 0x01;
         let hardware_len = 0x06;
         let hops = 0x04;
-        let xid = [0x05, 0x06, 0x07, 0x08];
-        let seconds = [0x09, 0x10];
-        let flags = u16::from_be_bytes([0x11, 0x12]);
-        let client_address = [0x13, 0x14, 0x15, 0x16];
-        let your_address = [0x17, 0x18, 0x19, 0x20];
-        let server_address = [0x21, 0x22, 0x23, 0x24];
-        let gateway_address = [0x25, 0x26, 0x27, 0x28];
-        let client_hardware_address = &[0x29, 0x30, 0x31, 0x32, 0x33, 0x34];
-        let expected = DHCPMessage {
-            op,
+        let xid = &[0x05, 0x06, 0x07, 0x08];
+        let seconds = &[0x09, 0x10];
+        let flags = &[0x11, 0x12];
+        let client_address = &[0x13, 0x14, 0x15, 0x16];
+        let your_address = &[0x17, 0x18, 0x19, 0x20];
+        let server_address = &[0x21, 0x22, 0x23, 0x24];
+        let gateway_address = &[0x25, 0x26, 0x27, 0x28];
+        let client_hardware_address = &[
+            0x29, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42,
+            0x43, 0x44,
+        ];
+        let expected = RawDHCPMessage {
+            operation: op,
             hardware_type,
             hardware_len,
             hops,
@@ -231,10 +241,10 @@ mod test {
             server_address,
             gateway_address,
             client_hardware_address,
-            options: vec![],
+            options: &[],
         };
-        let (rem, result) = parse_dhcp(TEST_MESSAGE_NO_OPTION).unwrap();
-        assert_eq!(result.op, expected.op);
+        let (rem, result) = parse_raw_dhcp(TEST_MESSAGE_NO_OPTION).unwrap();
+        assert_eq!(result.operation, expected.operation);
         assert_eq!(result.hardware_type, expected.hardware_type);
         assert_eq!(result.hardware_len, expected.hardware_len);
         assert_eq!(result.hops, expected.hops);
@@ -250,6 +260,14 @@ mod test {
             expected.client_hardware_address
         );
         assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_parse_dhcp_message() {
+        let bytes = TEST_MESSAGE_NO_OPTION;
+        let (remainder, result) = parse_dhcp(bytes).unwrap();
+        assert!(remainder.is_empty());
+        assert_eq!(result.operation, DHCPOperation::Discover);
     }
 
     #[test]
@@ -339,16 +357,5 @@ mod test {
         .concat();
         let (_, result) = parse_dhcp(&bytes).unwrap();
         assert_eq!(result.options, vec![DHCPOption::PathMTUPlateauTable(sizes)])
-    }
-
-    #[test]
-    fn should_have_broadcast_flag_set() {
-        let mut dhcp_with_flag = Vec::from(TEST_MESSAGE_NO_OPTION);
-        dhcp_with_flag[10] = 0b10000000;
-        dhcp_with_flag[11] = 0b00000000;
-        let (_, dhcp) = parse_dhcp(&dhcp_with_flag).unwrap();
-        println!("{:b}", u16::from_be_bytes([0b10000000, 0b00000000]));
-        println!("{}", u16::from_be_bytes([0b10000000, 0b00000000]));
-        assert!(dhcp.is_broadcast());
     }
 }

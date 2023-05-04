@@ -19,10 +19,7 @@ async fn main() -> io::Result<()> {
 
         let (rem, dhcp) = parse_dhcp(&buf).unwrap();
         println!("{:02X?} rem", rem);
-        println!("{:02X?}", dhcp.client_hardware_address);
-        println!("{:#?}", dhcp.is_broadcast());
-        println!("First 0x{:b}", dhcp.flags.to_be_bytes()[0]);
-        println!("Second 0x{:b}", dhcp.flags.to_be_bytes()[1]);
+        println!("{:#?}", dhcp.options);
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);
