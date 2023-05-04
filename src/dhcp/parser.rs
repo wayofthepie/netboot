@@ -70,11 +70,11 @@ struct RawDHCPMessage<'a> {
 }
 
 pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
-    // TODO make sure remainder is empty
+    // TODO make sure rest is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
-    let (rem, options) = many0(parse_dhcp_option)(raw.options)?;
+    let (rest, options) = many0(parse_dhcp_option)(raw.options)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
     let seconds = u16::from_be_bytes(raw.seconds.to_owned());
     let flags = u16::from_be_bytes(raw.flags.to_owned());
@@ -92,14 +92,14 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
         your_address,
         options,
     };
-    Ok((rem, dhcp))
+    Ok((rest, dhcp))
 }
 
 fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageError<&[u8]>> {
     match bytes {
-        &[operation, hardware_type, hardware_len, hops, ref rem @ ..] => {
+        &[operation, hardware_type, hardware_len, hops, ref rest @ ..] => {
             let (
-                rem,
+                rest,
                 (
                     xid,
                     seconds,
@@ -125,7 +125,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 take_n_bytes::<192>,
                 take_n_bytes::<4>,
                 nom::combinator::rest,
-            ))(rem)?;
+            ))(rest)?;
             let raw = RawDHCPMessage {
                 operation,
                 hardware_type,
@@ -141,7 +141,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 client_hardware_address,
                 options,
             };
-            Ok((rem, raw))
+            Ok((rest, raw))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::InvalidData)),
     }
@@ -150,35 +150,35 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DHCPOption, DHCPMessageError<&[u8]>> {
     match bytes {
-        [DHCP_OPTION_ARP_CACHE_TIMEOUT, _, ref rem @ ..] => {
-            let (rem, data) = take_n_bytes::<4>(rem)?;
+        [DHCP_OPTION_ARP_CACHE_TIMEOUT, _, ref rest @ ..] => {
+            let (rest, data) = take_n_bytes::<4>(rest)?;
             let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
-            Ok((rem, DHCPOption::ArpCacheTimeout(timeout)))
+            Ok((rest, DHCPOption::ArpCacheTimeout(timeout)))
         }
-        [DHCP_OPTION_SUBNET_MASK, _, ref rem @ ..] => {
-            let (rem, data) = take_n_bytes::<4>(rem)?;
+        [DHCP_OPTION_SUBNET_MASK, _, ref rest @ ..] => {
+            let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
-            Ok((rem, DHCPOption::SubnetMask(subnet_mask)))
+            Ok((rest, DHCPOption::SubnetMask(subnet_mask)))
         }
-        [DHCP_OPTION_LOG_SERVER, len, ref rem @ ..] => {
-            let (rem, data) = take(*len as usize)(rem)?;
+        [DHCP_OPTION_LOG_SERVER, len, ref rest @ ..] => {
+            let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
-            Ok((rem, DHCPOption::LogServer(addresses)))
+            Ok((rest, DHCPOption::LogServer(addresses)))
         }
-        [DHCP_OPTION_RESOURCE_LOCATION_SERVER, len, ref rem @ ..] => {
-            let (rem, data) = take(*len as usize)(rem)?;
+        [DHCP_OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
+            let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
-            Ok((rem, DHCPOption::ResourceLocationProtocolServer(addresses)))
+            Ok((rest, DHCPOption::ResourceLocationProtocolServer(addresses)))
         }
-        [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rem @ ..] => {
-            let (rem, data) = take(*len as usize)(rem)?;
+        [DHCP_OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
+            let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, sizes) =
                 many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
             tracing::debug!("MTU PLATEAU [ len: {len}, sizes: {sizes:#?}]");
-            Ok((rem, DHCPOption::PathMTUPlateauTable(sizes)))
+            Ok((rest, DHCPOption::PathMTUPlateauTable(sizes)))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
     }
@@ -262,8 +262,8 @@ mod test {
             timeout_bytes,
         ]
         .concat();
-        let (remainder, dhcp) = parse_dhcp(&bytes).unwrap();
-        assert!(remainder.is_empty());
+        let (rest, dhcp) = parse_dhcp(&bytes).unwrap();
+        assert!(rest.is_empty());
         assert_eq!(dhcp.operation, DHCPOperation::Discover);
         assert_eq!(dhcp.hardware_type, HardwareType::Ethernet);
         assert_eq!(dhcp.hardware_len, HARDWARE_LEN);
@@ -287,8 +287,8 @@ mod test {
     fn should_parse_with_ieee_802_11_wireless_hardware_type() {
         let mut bytes = test_message_no_option();
         bytes[1] = 40;
-        let (remainder, result) = parse_dhcp(&bytes).unwrap();
-        assert!(remainder.is_empty());
+        let (rest, result) = parse_dhcp(&bytes).unwrap();
+        assert!(rest.is_empty());
         assert_eq!(result.hardware_type, HardwareType::Ieee802_11Wireless);
     }
 
