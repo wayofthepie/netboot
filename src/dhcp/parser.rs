@@ -28,29 +28,6 @@ pub enum DHCPOperation {
 }
 
 // The hardware types are defined in https://www.rfc-editor.org/rfc/rfc1700.
-// Number Hardware Type (hrd)
-// ------ -----------------------------------
-// 1 Ethernet (10Mb)
-// 2 Experimental Ethernet (3Mb)
-// 3 Amateur Radio AX.25
-// 4 Proteon ProNET Token Ring
-// 5 Chaos
-// 6 IEEE 802 Networks
-// 7 ARCNET
-// 8 Hyperchannel
-// 9 Lanstar
-// 10 Autonet Short Address
-// 11 LocalTalk
-// 12 LocalNet (IBM PCNet or SYTEK LocalNET)
-// 13 Ultra link
-// 14 SMDS
-// 15 Frame Relay
-// 16 Asynchronous Transmission Mode (ATM)
-// 17 HDLC
-// 18 Fibre Channel
-// 19 Asynchronous Transmission Mode (ATM)
-// 20 Serial Line
-// 21 Asynchronous Transmission Mode (ATM)
 #[derive(Debug, PartialEq)]
 pub enum HardwareType {
     Ethernet,
