@@ -84,7 +84,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
 
 fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageError<&[u8]>> {
     match bytes {
-        &[op, hardware_type, hardware_len, hops, ref rem @ ..] => {
+        &[operation, hardware_type, hardware_len, hops, ref rem @ ..] => {
             type ParsedRemainder<'a> = (
                 &'a [u8],
                 (
@@ -130,7 +130,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 nom::combinator::rest,
             ))(rem)?;
             let raw = RawDHCPMessage {
-                operation: op,
+                operation,
                 hardware_type,
                 hardware_len,
                 hops,
