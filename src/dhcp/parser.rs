@@ -9,7 +9,7 @@ use nom::IResult;
 use super::error::DHCPMessageError;
 
 #[derive(Debug, PartialEq)]
-pub struct DHCPMessage<'a> {
+pub struct DhcpMessage<'a> {
     pub operation: Operation,
     pub hardware_type: HardwareType,
     pub hardware_len: u8,
@@ -71,7 +71,7 @@ pub enum Option {
 }
 
 #[derive(Debug)]
-struct RawDHCPMessage<'a> {
+struct RawDhcpMessage<'a> {
     operation: u8,
     hardware_type: u8,
     hardware_len: u8,
@@ -87,7 +87,7 @@ struct RawDHCPMessage<'a> {
     options: &'a [u8],
 }
 
-pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<&[u8]>> {
+pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DhcpMessage, DHCPMessageError<&[u8]>> {
     // TODO make sure rest is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
@@ -102,7 +102,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     let server_address = Ipv4Addr::from(*raw.server_address);
     let gateway_address = Ipv4Addr::from(*raw.gateway_address);
     let (_, client_hardware_address) = take(hardware_len)(raw.client_hardware_address.as_slice())?;
-    let dhcp = DHCPMessage {
+    let dhcp = DhcpMessage {
         operation,
         hardware_type,
         hardware_len,
@@ -120,7 +120,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     Ok((rest, dhcp))
 }
 
-fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageError<&[u8]>> {
+fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DHCPMessageError<&[u8]>> {
     match bytes {
         &[operation, hardware_type, hardware_len, hops, ref rest @ ..] => {
             let (
@@ -151,7 +151,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDHCPMessage, DHCPMessageErr
                 take_n_bytes::<4>,
                 nom::combinator::rest,
             ))(rest)?;
-            let raw = RawDHCPMessage {
+            let raw = RawDhcpMessage {
                 operation,
                 hardware_type,
                 hardware_len,
