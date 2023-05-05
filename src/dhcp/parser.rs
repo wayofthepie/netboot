@@ -37,6 +37,7 @@ pub enum MessageType {
     Discover,
     Offer,
     Request,
+    Acknowledgement,
 }
 
 // The hardware types are defined in https://www.rfc-editor.org/rfc/rfc1700.
@@ -172,6 +173,10 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], Option, DHCPMessageError<&[
             [1, ..] => Ok((&rest[0..], Option::MessageType(MessageType::Discover))),
             [2, ..] => Ok((&rest[0..], Option::MessageType(MessageType::Offer))),
             [3, ..] => Ok((&rest[0..], Option::MessageType(MessageType::Request))),
+            [5, ..] => Ok((
+                &rest[0..],
+                Option::MessageType(MessageType::Acknowledgement),
+            )),
             _ => Err(nom::Err::Error(
                 DHCPMessageError::InvalidValueForOptionMessageType(rest[0]),
             )),
@@ -409,6 +414,17 @@ mod test {
             assert_eq!(
                 result.options,
                 vec![Option::MessageType(MessageType::Request)]
+            );
+        }
+
+        #[test]
+        fn dhcp_message_type_acknowledgement() {
+            let dhcp_options = [53, 1, 5];
+            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let (_, result) = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result.options,
+                vec![Option::MessageType(MessageType::Acknowledgement)]
             );
         }
 
