@@ -15,6 +15,7 @@ pub const OPTION_SUBNET_MASK: u8 = 1;
 pub const OPTION_LOG_SERVER: u8 = 7;
 pub const OPTION_RESOURCE_LOCATION_SERVER: u8 = 11;
 pub const OPTION_PATH_MTU_PLATEAU_TABLE: u8 = 25;
+pub const OPTION_ROUTER: u8 = 3;
 
 pub const DISCOVER_OPERATION: u8 = 1;
 pub const OFFER_OPERATION: u8 = 2;
@@ -84,6 +85,7 @@ pub enum DhcpOption {
     LogServer,
     ResourceLocationProtocolServer,
     PathMTUPlateauTable,
+    Router,
 }
 
 #[derive(Debug, Hash, PartialEq)]
@@ -94,6 +96,7 @@ pub enum DhcpOptionValue {
     LogServer(Vec<Ipv4Addr>),
     ResourceLocationProtocolServer(Vec<Ipv4Addr>),
     PathMTUPlateauTable(Vec<u16>),
+    Router(Ipv4Addr),
 }
 
 #[derive(Debug)]

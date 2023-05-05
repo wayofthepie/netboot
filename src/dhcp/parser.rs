@@ -14,7 +14,7 @@ use super::models::{
     OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE,
     OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER,
     OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
-    OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
+    OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER, OPTION_SUBNET_MASK,
 };
 
 pub fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DHCPMessageError<&[u8]>>> {
@@ -192,7 +192,6 @@ fn parse_dhcp_option(
         }
         [OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
-            // TODO: Make sure there are no bytes leftover here.
             let (_, sizes) =
                 many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
             Ok((
@@ -202,6 +201,11 @@ fn parse_dhcp_option(
                     DhcpOptionValue::PathMTUPlateauTable(sizes),
                 ),
             ))
+        }
+        [OPTION_ROUTER, _, ref rest @ ..] => {
+            let (rest, data) = take_n_bytes::<4>(rest)?;
+            let address = Ipv4Addr::from(*data);
+            Ok((rest, (DhcpOption::Router, DhcpOptionValue::Router(address))))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
     }
@@ -333,12 +337,24 @@ mod test {
         );
     }
 
-    #[test]
-    fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
-        let dhcp_options = [53, 1, 2];
-        let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-        let dhcp = parse_dhcp(&bytes).unwrap();
-        assert_eq!(dhcp.as_byte_vec(), bytes);
+    mod dhcp_serialize {
+        use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option};
+
+        #[test]
+        fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
+            let dhcp_options = [53, 1, 2];
+            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let dhcp = parse_dhcp(&bytes).unwrap();
+            assert_eq!(dhcp.as_byte_vec(), bytes);
+        }
+
+        #[test]
+        fn message_type() {
+            let dhcp_options = [53, 1, 1];
+            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let dhcp = parse_dhcp(&bytes).unwrap();
+            assert_eq!(dhcp.as_byte_vec(), bytes);
+        }
     }
 
     mod dhcp_hardware_types {
@@ -403,12 +419,13 @@ mod test {
     }
 
     mod dhcp_options {
-        use std::net::Ipv4Addr;
+        use std::{net::Ipv4Addr, str::FromStr};
 
         use crate::dhcp::{
             models::{
                 DhcpOptionValue, OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER,
-                OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
+                OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER,
+                OPTION_SUBNET_MASK,
             },
             parser::{parse_dhcp, test::test_message_no_option, DhcpOption, MessageType},
         };
@@ -568,6 +585,23 @@ mod test {
                     .get(&DhcpOption::PathMTUPlateauTable)
                     .unwrap(),
                 &DhcpOptionValue::PathMTUPlateauTable(sizes)
+            )
+        }
+
+        #[test]
+        fn router() {
+            let address = Ipv4Addr::from_str("192.168.1.1").unwrap();
+            let dhcp_option: [u8; 2] = [OPTION_ROUTER, 4];
+            let bytes = [
+                &test_message_no_option(),
+                dhcp_option.as_slice(),
+                address.octets().as_slice(),
+            ]
+            .concat();
+            let result = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result.options.get(&DhcpOption::Router).unwrap(),
+                &DhcpOptionValue::Router(address)
             )
         }
     }
