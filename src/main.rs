@@ -1,6 +1,6 @@
 mod dhcp;
 
-use std::io;
+use std::{io, net::Ipv4Addr, str::FromStr};
 use tokio::net::UdpSocket;
 use tracing_subscriber::prelude::*;
 
@@ -17,8 +17,11 @@ async fn main() -> io::Result<()> {
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
 
-        let (_, dhcp) = parse_dhcp(&buf).unwrap();
+        let mut dhcp = parse_dhcp(&buf).unwrap();
         println!("{:#?}", dhcp);
+
+        dhcp.your_address = Ipv4Addr::from_str("192.168.122.204").unwrap();
+        dhcp.server_address = Ipv4Addr::from_str("192.168.122.1").unwrap();
 
         let len = sock.send_to(&buf[..len], addr).await?;
         println!("{:?} bytes sent", len);

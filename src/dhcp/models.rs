@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::{collections::HashMap, net::Ipv4Addr};
 
 use super::serialize::serialize_dhcp;
 
@@ -37,7 +37,7 @@ pub struct DhcpMessage<'a> {
     pub server_address: Ipv4Addr,
     pub gateway_address: Ipv4Addr,
     pub client_hardware_address: &'a [u8],
-    pub options: Vec<DhcpOption>,
+    pub options: DhcpOptions,
 }
 
 impl DhcpMessage<'_> {
@@ -53,7 +53,7 @@ pub enum Operation {
     Acknowledgement,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Hash, PartialEq)]
 pub enum MessageType {
     Discover,
     Offer,
@@ -74,8 +74,20 @@ pub struct Flags {
     pub broadcast: bool,
 }
 
-#[derive(Debug, PartialEq)]
+pub type DhcpOptions = HashMap<DhcpOption, DhcpOptionValue>;
+
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub enum DhcpOption {
+    MessageType,
+    ArpCacheTimeout,
+    SubnetMask,
+    LogServer,
+    ResourceLocationProtocolServer,
+    PathMTUPlateauTable,
+}
+
+#[derive(Debug, Hash, PartialEq)]
+pub enum DhcpOptionValue {
     MessageType(MessageType),
     ArpCacheTimeout(u32),
     SubnetMask(Ipv4Addr),

@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use super::models::{
-    DhcpMessage, DhcpOption, HardwareType, MessageType, Operation, ACKNOWLEDGEMENT_OPERATION,
-    DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE, IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE,
-    OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT, OPTION_MESSAGE_TYPE,
-    OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER,
-    OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST, OPTION_SUBNET_MASK,
+    DhcpMessage, DhcpOption, DhcpOptionValue, HardwareType, MessageType, Operation,
+    ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
+    IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT,
+    OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER,
+    OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST,
+    OPTION_SUBNET_MASK,
 };
 
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
@@ -36,14 +39,14 @@ pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
     .concat()
 }
 
-fn serialize_dhcp_options(options: &[DhcpOption]) -> Vec<u8> {
+fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec<u8> {
     let mut bytes = vec![];
     for option in options.iter() {
         match option {
-            DhcpOption::MessageType(message_type) => {
+            (DhcpOption::MessageType, DhcpOptionValue::MessageType(message_type)) => {
                 bytes.append(&mut serialize_dhcp_message_type(message_type))
             }
-            DhcpOption::ArpCacheTimeout(timeout) => {
+            (DhcpOption::ArpCacheTimeout, DhcpOptionValue::ArpCacheTimeout(timeout)) => {
                 let timeout_bytes = timeout.to_be_bytes();
                 let mut data = [
                     [OPTION_ARP_CACHE_TIMEOUT, 4].as_slice(),
@@ -52,14 +55,18 @@ fn serialize_dhcp_options(options: &[DhcpOption]) -> Vec<u8> {
                 .concat();
                 bytes.append(&mut data)
             }
-            DhcpOption::SubnetMask(mask) => {
+            (DhcpOption::SubnetMask, DhcpOptionValue::SubnetMask(mask)) => {
                 let mut data =
                     [[OPTION_SUBNET_MASK, 4].as_slice(), mask.octets().as_slice()].concat();
                 bytes.append(&mut data);
             }
-            DhcpOption::LogServer(_) => todo!(),
-            DhcpOption::ResourceLocationProtocolServer(_) => todo!(),
-            DhcpOption::PathMTUPlateauTable(_) => todo!(),
+            (DhcpOption::LogServer, DhcpOptionValue::LogServer(_)) => todo!(),
+            (
+                DhcpOption::ResourceLocationProtocolServer,
+                DhcpOptionValue::ResourceLocationProtocolServer(_),
+            ) => todo!(),
+            (DhcpOption::PathMTUPlateauTable, DhcpOptionValue::PathMTUPlateauTable(_)) => todo!(),
+            _ => todo!(),
         }
     }
     bytes

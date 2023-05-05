@@ -8,21 +8,21 @@ use nom::IResult;
 
 use super::error::DHCPMessageError;
 use super::models::{
-    DhcpMessage, DhcpOption, Flags, HardwareType, MessageType, Operation, RawDhcpMessage,
-    ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
-    IEE801_11WIRELESS_HARDWARE_TYPE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER,
-    OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER,
-    OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST,
-    OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
+    DhcpMessage, DhcpOption, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
+    Operation, RawDhcpMessage, ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION,
+    ETHERNET_HARDWARE_TYPE, IEE801_11WIRELESS_HARDWARE_TYPE, OFFER_OPERATION,
+    OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE,
+    OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER,
+    OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
+    OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
 };
 
-pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DhcpMessage, DHCPMessageError<&[u8]>> {
+pub fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DHCPMessageError<&[u8]>>> {
     // TODO make sure rest is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
     let hardware_len = raw.hardware_len;
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
-    let (rest, options) = many0(parse_dhcp_option)(raw.options)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
     let seconds = u16::from_be_bytes(raw.seconds.to_owned());
     let flags = parse_flags(raw.flags)?;
@@ -31,6 +31,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DhcpMessage, DHCPMessageError<
     let server_address = Ipv4Addr::from(*raw.server_address);
     let gateway_address = Ipv4Addr::from(*raw.gateway_address);
     let (_, client_hardware_address) = take(hardware_len)(raw.client_hardware_address.as_slice())?;
+    let (_, options) = many0(parse_dhcp_option)(raw.options)?;
     let dhcp = DhcpMessage {
         operation,
         hardware_type,
@@ -44,9 +45,9 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DhcpMessage, DHCPMessageError<
         server_address,
         gateway_address,
         client_hardware_address,
-        options,
+        options: DhcpOptions::from_iter(options),
     };
-    Ok((rest, dhcp))
+    Ok(dhcp)
 }
 
 fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DHCPMessageError<&[u8]>> {
@@ -102,25 +103,46 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DHCPMessageErr
 }
 
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
-fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DhcpOption, DHCPMessageError<&[u8]>> {
+fn parse_dhcp_option(
+    bytes: &[u8],
+) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DHCPMessageError<&[u8]>> {
     match bytes {
         [OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
-            [OPTION_MESSAGE_TYPE_DISCOVER, ..] => {
-                Ok((&rest[0..], DhcpOption::MessageType(MessageType::Discover)))
-            }
-            [OPTION_MESSAGE_TYPE_OFFER, ..] => {
-                Ok((&rest[0..], DhcpOption::MessageType(MessageType::Offer)))
-            }
-            [OPTION_MESSAGE_TYPE_REQUEST, ..] => {
-                Ok((&rest[0..], DhcpOption::MessageType(MessageType::Request)))
-            }
+            [OPTION_MESSAGE_TYPE_DISCOVER, ..] => Ok((
+                &rest[0..],
+                (
+                    DhcpOption::MessageType,
+                    DhcpOptionValue::MessageType(MessageType::Discover),
+                ),
+            )),
+            [OPTION_MESSAGE_TYPE_OFFER, ..] => Ok((
+                &rest[0..],
+                (
+                    DhcpOption::MessageType,
+                    DhcpOptionValue::MessageType(MessageType::Offer),
+                ),
+            )),
+            [OPTION_MESSAGE_TYPE_REQUEST, ..] => Ok((
+                &rest[0..],
+                (
+                    DhcpOption::MessageType,
+                    DhcpOptionValue::MessageType(MessageType::Request),
+                ),
+            )),
             [OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, ..] => Ok((
                 &rest[0..],
-                DhcpOption::MessageType(MessageType::Acknowledgement),
+                (
+                    DhcpOption::MessageType,
+                    DhcpOptionValue::MessageType(MessageType::Acknowledgement),
+                ),
             )),
-            [OPTION_MESSAGE_TYPE_RELEASE, ..] => {
-                Ok((&rest[0..], DhcpOption::MessageType(MessageType::Release)))
-            }
+            [OPTION_MESSAGE_TYPE_RELEASE, ..] => Ok((
+                &rest[0..],
+                (
+                    DhcpOption::MessageType,
+                    DhcpOptionValue::MessageType(MessageType::Release),
+                ),
+            )),
             _ => Err(nom::Err::Error(
                 DHCPMessageError::InvalidValueForOptionMessageType(rest[0]),
             )),
@@ -128,31 +150,58 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DhcpOption, DHCPMessageErro
         [OPTION_ARP_CACHE_TIMEOUT, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
-            Ok((rest, DhcpOption::ArpCacheTimeout(timeout)))
+            Ok((
+                rest,
+                (
+                    DhcpOption::ArpCacheTimeout,
+                    DhcpOptionValue::ArpCacheTimeout(timeout),
+                ),
+            ))
         }
         [OPTION_SUBNET_MASK, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
-            Ok((rest, DhcpOption::SubnetMask(subnet_mask)))
+            Ok((
+                rest,
+                (
+                    DhcpOption::SubnetMask,
+                    DhcpOptionValue::SubnetMask(subnet_mask),
+                ),
+            ))
         }
         [OPTION_LOG_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
-            Ok((rest, DhcpOption::LogServer(addresses)))
+            Ok((
+                rest,
+                (DhcpOption::LogServer, DhcpOptionValue::LogServer(addresses)),
+            ))
         }
         [OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = parse_ip_addresses(data)?;
-            Ok((rest, DhcpOption::ResourceLocationProtocolServer(addresses)))
+            Ok((
+                rest,
+                (
+                    DhcpOption::ResourceLocationProtocolServer,
+                    DhcpOptionValue::ResourceLocationProtocolServer(addresses),
+                ),
+            ))
         }
         [OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, sizes) =
                 many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
-            Ok((rest, DhcpOption::PathMTUPlateauTable(sizes)))
+            Ok((
+                rest,
+                (
+                    DhcpOption::PathMTUPlateauTable,
+                    DhcpOptionValue::PathMTUPlateauTable(sizes),
+                ),
+            ))
         }
         _ => Err(nom::Err::Error(DHCPMessageError::NotYetImplemented)),
     }
@@ -204,7 +253,7 @@ mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::{
-        models::{MAGIC_COOKIE, OPTION_ARP_CACHE_TIMEOUT},
+        models::{DhcpOptionValue, MAGIC_COOKIE, OPTION_ARP_CACHE_TIMEOUT},
         parser::{parse_dhcp, DhcpOption, Flags, HardwareType, Operation},
     };
 
@@ -250,8 +299,7 @@ mod test {
             timeout_bytes,
         ]
         .concat();
-        let (rest, dhcp) = parse_dhcp(&bytes).unwrap();
-        assert!(rest.is_empty());
+        let dhcp = parse_dhcp(&bytes).unwrap();
         assert_eq!(dhcp.operation, Operation::Discover);
         assert_eq!(dhcp.hardware_type, HardwareType::Ethernet);
         assert_eq!(dhcp.hardware_len, HARDWARE_LEN);
@@ -279,15 +327,18 @@ mod test {
             dhcp.client_hardware_address,
             &CLIENT_HARDWARE_ADDRESS[..HARDWARE_LEN as usize]
         );
-        assert_eq!(dhcp.options, vec![DhcpOption::ArpCacheTimeout(timeout_ms)]);
+        assert_eq!(
+            dhcp.options.get(&DhcpOption::ArpCacheTimeout).unwrap(),
+            &DhcpOptionValue::ArpCacheTimeout(timeout_ms)
+        );
     }
 
     #[test]
     fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
         let dhcp_options = [53, 1, 2];
         let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-        let (_, result) = parse_dhcp(&bytes).unwrap();
-        assert_eq!(result.as_byte_vec(), bytes);
+        let dhcp = parse_dhcp(&bytes).unwrap();
+        assert_eq!(dhcp.as_byte_vec(), bytes);
     }
 
     mod dhcp_hardware_types {
@@ -297,8 +348,7 @@ mod test {
         fn ethernet() {
             let mut bytes = test_message_no_option();
             bytes[1] = 1;
-            let (rest, result) = parse_dhcp(&bytes).unwrap();
-            assert!(rest.is_empty());
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.hardware_type, HardwareType::Ethernet);
         }
 
@@ -306,8 +356,7 @@ mod test {
         fn ieee_802_11_wireless() {
             let mut bytes = test_message_no_option();
             bytes[1] = 40;
-            let (rest, result) = parse_dhcp(&bytes).unwrap();
-            assert!(rest.is_empty());
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.hardware_type, HardwareType::Ieee802_11Wireless);
         }
     }
@@ -319,7 +368,7 @@ mod test {
         fn discover() {
             let mut bytes = test_message_no_option();
             bytes[0] = 1;
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Discover);
         }
 
@@ -327,7 +376,7 @@ mod test {
         fn offer() {
             let mut bytes = test_message_no_option();
             bytes[0] = 2;
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Offer);
         }
 
@@ -335,7 +384,7 @@ mod test {
         fn acknowledgement() {
             let mut bytes = test_message_no_option();
             bytes[0] = 4;
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Acknowledgement);
         }
     }
@@ -348,7 +397,7 @@ mod test {
             let mut bytes = test_message_no_option();
             bytes[10] = 0b10000000;
             bytes[11] = 0x00;
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert!(result.flags.broadcast)
         }
     }
@@ -358,8 +407,8 @@ mod test {
 
         use crate::dhcp::{
             models::{
-                OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER, OPTION_PATH_MTU_PLATEAU_TABLE,
-                OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
+                DhcpOptionValue, OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER,
+                OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
             },
             parser::{parse_dhcp, test::test_message_no_option, DhcpOption, MessageType},
         };
@@ -368,10 +417,10 @@ mod test {
         fn dhcp_message_type_discover() {
             let dhcp_options = [53, 1, 1];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::MessageType(MessageType::Discover)]
+                result.options.get(&DhcpOption::MessageType).unwrap(),
+                &DhcpOptionValue::MessageType(MessageType::Discover)
             );
         }
 
@@ -379,10 +428,10 @@ mod test {
         fn dhcp_message_type_offer() {
             let dhcp_options = [53, 1, 2];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::MessageType(MessageType::Offer)]
+                result.options.get(&DhcpOption::MessageType).unwrap(),
+                &DhcpOptionValue::MessageType(MessageType::Offer)
             );
         }
 
@@ -390,10 +439,10 @@ mod test {
         fn dhcp_message_type_request() {
             let dhcp_options = [53, 1, 3];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::MessageType(MessageType::Request)]
+                result.options.get(&DhcpOption::MessageType).unwrap(),
+                &DhcpOptionValue::MessageType(MessageType::Request)
             );
         }
 
@@ -401,10 +450,10 @@ mod test {
         fn dhcp_message_type_acknowledgement() {
             let dhcp_options = [53, 1, 5];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::MessageType(MessageType::Acknowledgement)]
+                result.options.get(&DhcpOption::MessageType).unwrap(),
+                &DhcpOptionValue::MessageType(MessageType::Acknowledgement)
             );
         }
 
@@ -412,10 +461,10 @@ mod test {
         fn dhcp_message_type_release() {
             let dhcp_options = [53, 1, 7];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::MessageType(MessageType::Release)]
+                result.options.get(&DhcpOption::MessageType).unwrap(),
+                &DhcpOptionValue::MessageType(MessageType::Release)
             );
         }
 
@@ -430,8 +479,11 @@ mod test {
                 timeout_bytes.as_slice(),
             ]
             .concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
-            assert_eq!(result.options, vec![DhcpOption::ArpCacheTimeout(timeout)])
+            let result = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result.options.get(&DhcpOption::ArpCacheTimeout).unwrap(),
+                &DhcpOptionValue::ArpCacheTimeout(timeout)
+            )
         }
 
         #[test]
@@ -446,8 +498,11 @@ mod test {
                 subnet_mask_bytes.as_slice(),
             ]
             .concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
-            assert_eq!(result.options, vec![DhcpOption::SubnetMask(subnet_mask)])
+            let result = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result.options.get(&DhcpOption::SubnetMask).unwrap(),
+                &DhcpOptionValue::SubnetMask(subnet_mask)
+            )
         }
 
         #[test]
@@ -464,8 +519,11 @@ mod test {
                 log_servers_bytes.as_slice(),
             ]
             .concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
-            assert_eq!(result.options, vec![DhcpOption::LogServer(log_servers)])
+            let result = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result.options.get(&DhcpOption::LogServer).unwrap(),
+                &DhcpOptionValue::LogServer(log_servers)
+            )
         }
 
         #[test]
@@ -482,10 +540,13 @@ mod test {
                 rlp_servers_bytes.as_slice(),
             ]
             .concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
+            let result = parse_dhcp(&bytes).unwrap();
             assert_eq!(
-                result.options,
-                vec![DhcpOption::ResourceLocationProtocolServer(rlp_servers)]
+                result
+                    .options
+                    .get(&DhcpOption::ResourceLocationProtocolServer)
+                    .unwrap(),
+                &DhcpOptionValue::ResourceLocationProtocolServer(rlp_servers)
             )
         }
 
@@ -500,8 +561,14 @@ mod test {
                 sizes_bytes.as_slice(),
             ]
             .concat();
-            let (_, result) = parse_dhcp(&bytes).unwrap();
-            assert_eq!(result.options, vec![DhcpOption::PathMTUPlateauTable(sizes)])
+            let result = parse_dhcp(&bytes).unwrap();
+            assert_eq!(
+                result
+                    .options
+                    .get(&DhcpOption::PathMTUPlateauTable)
+                    .unwrap(),
+                &DhcpOptionValue::PathMTUPlateauTable(sizes)
+            )
         }
     }
 }
