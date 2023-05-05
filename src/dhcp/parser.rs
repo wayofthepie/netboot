@@ -361,7 +361,15 @@ mod test {
         use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option, Operation};
 
         #[test]
-        fn dhcp_offer() {
+        fn discover() {
+            let mut bytes = test_message_no_option();
+            bytes[0] = 1;
+            let (_, result) = parse_dhcp(&bytes).unwrap();
+            assert_eq!(result.operation, Operation::Discover);
+        }
+
+        #[test]
+        fn offer() {
             let mut bytes = test_message_no_option();
             bytes[0] = 2;
             let (_, result) = parse_dhcp(&bytes).unwrap();
@@ -369,7 +377,7 @@ mod test {
         }
 
         #[test]
-        fn dhcp_acknowledgement() {
+        fn acknowledgement() {
             let mut bytes = test_message_no_option();
             bytes[0] = 4;
             let (_, result) = parse_dhcp(&bytes).unwrap();
