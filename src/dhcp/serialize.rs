@@ -6,7 +6,8 @@ use super::models::{
     IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT,
     OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER,
     OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST,
-    OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_SUBNET_MASK,
+    OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER,
+    OPTION_SUBNET_MASK,
 };
 
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
@@ -87,7 +88,12 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
                 .concat();
                 bytes.append(&mut data);
             }
-            (DhcpOption::Router, DhcpOptionValue::Router(address)) => todo!(),
+            (DhcpOption::Router, DhcpOptionValue::Router(address)) => {
+                let address_bytes = address.octets();
+                let len = address_bytes.len() as u8;
+                let mut data = [[OPTION_ROUTER, len].as_slice(), address_bytes.as_slice()].concat();
+                bytes.append(&mut data);
+            }
             _ => todo!(),
         }
     }

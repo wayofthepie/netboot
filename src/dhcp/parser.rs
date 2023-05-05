@@ -108,36 +108,36 @@ fn parse_dhcp_option(
 ) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DHCPMessageError<&[u8]>> {
     match bytes {
         [OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
-            [OPTION_MESSAGE_TYPE_DISCOVER, ..] => Ok((
-                &rest[0..],
+            [OPTION_MESSAGE_TYPE_DISCOVER, rest @ ..] => Ok((
+                rest,
                 (
                     DhcpOption::MessageType,
                     DhcpOptionValue::MessageType(MessageType::Discover),
                 ),
             )),
-            [OPTION_MESSAGE_TYPE_OFFER, ..] => Ok((
-                &rest[0..],
+            [OPTION_MESSAGE_TYPE_OFFER, rest @ ..] => Ok((
+                rest,
                 (
                     DhcpOption::MessageType,
                     DhcpOptionValue::MessageType(MessageType::Offer),
                 ),
             )),
-            [OPTION_MESSAGE_TYPE_REQUEST, ..] => Ok((
-                &rest[0..],
+            [OPTION_MESSAGE_TYPE_REQUEST, rest @ ..] => Ok((
+                rest,
                 (
                     DhcpOption::MessageType,
                     DhcpOptionValue::MessageType(MessageType::Request),
                 ),
             )),
-            [OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, ..] => Ok((
-                &rest[0..],
+            [OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, rest @ ..] => Ok((
+                rest,
                 (
                     DhcpOption::MessageType,
                     DhcpOptionValue::MessageType(MessageType::Acknowledgement),
                 ),
             )),
-            [OPTION_MESSAGE_TYPE_RELEASE, ..] => Ok((
-                &rest[0..],
+            [OPTION_MESSAGE_TYPE_RELEASE, rest @ ..] => Ok((
+                rest,
                 (
                     DhcpOption::MessageType,
                     DhcpOptionValue::MessageType(MessageType::Release),
@@ -158,7 +158,7 @@ fn parse_dhcp_option(
                 ),
             ))
         }
-        [OPTION_SUBNET_MASK, _, ref rest @ ..] => {
+        [OPTION_SUBNET_MASK, len, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
             Ok((
@@ -369,6 +369,14 @@ mod test {
         #[test]
         fn path_mtu_table() {
             let options = [25, 2, 10, 10];
+            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let dhcp = parse_dhcp(&bytes).unwrap();
+            assert_eq!(dhcp.as_byte_vec(), bytes);
+        }
+
+        #[test]
+        fn router() {
+            let options = [3, 4, 10, 10, 10, 10];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
             assert_eq!(dhcp.as_byte_vec(), bytes);
