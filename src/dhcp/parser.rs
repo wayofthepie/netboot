@@ -16,7 +16,7 @@ pub struct DHCPMessage<'a> {
     pub hops: u8,
     pub xid: u32,
     pub seconds: u16,
-    flags: u16,
+    pub flags: Flags,
     pub client_address: Ipv4Addr,
     pub your_address: Ipv4Addr,
     pub server_address: Ipv4Addr,
@@ -46,6 +46,11 @@ pub enum MessageType {
 pub enum HardwareType {
     Ethernet,
     Ieee802_11Wireless,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Flags {
+    broadcast: bool,
 }
 
 const OPTION_MESSAGE_TYPE: u8 = 53;
@@ -91,7 +96,7 @@ pub fn parse_dhcp(bytes: &[u8]) -> IResult<&[u8], DHCPMessage, DHCPMessageError<
     let (rest, options) = many0(parse_dhcp_option)(raw.options)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
     let seconds = u16::from_be_bytes(raw.seconds.to_owned());
-    let flags = u16::from_be_bytes(raw.flags.to_owned());
+    let flags = parse_flags(raw.flags)?;
     let client_address = Ipv4Addr::from(*raw.client_address);
     let your_address = Ipv4Addr::from(*raw.your_address);
     let server_address = Ipv4Addr::from(*raw.server_address);
@@ -216,6 +221,18 @@ fn parse_dhcp_option(bytes: &[u8]) -> IResult<&[u8], Option, DHCPMessageError<&[
     }
 }
 
+const BROADCAST_BIT: usize = 15;
+fn parse_flags(flags: &[u8; 2]) -> Result<Flags, nom::Err<DHCPMessageError<&[u8]>>> {
+    let flags = u16::from_be_bytes(*flags);
+    Ok(Flags {
+        broadcast: is_bit_set(BROADCAST_BIT, flags),
+    })
+}
+
+fn is_bit_set(index: usize, num: u16) -> bool {
+    num & (1 << index) != 0
+}
+
 fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], &[u8; N], DHCPMessageError<&[u8]>> {
     map(take(N), |client_address: &[u8]| {
         client_address.try_into().unwrap()
@@ -250,7 +267,7 @@ mod test {
     use std::net::Ipv4Addr;
 
     use crate::dhcp::parser::{
-        parse_dhcp, HardwareType, Operation, Option, OPTION_ARP_CACHE_TIMEOUT,
+        parse_dhcp, Flags, HardwareType, Operation, Option, OPTION_ARP_CACHE_TIMEOUT,
     };
 
     const OPERATION: u8 = 1;
@@ -259,7 +276,7 @@ mod test {
     const HOPS: u8 = 4;
     const XID: &[u8; 4] = &[5, 6, 7, 8];
     const SECONDS: &[u8; 2] = &[0, 1];
-    const FLAGS: &[u8; 2] = &[11, 12];
+    const FLAGS: &[u8; 2] = &[0b10000000, 0b00];
     const CLIENT_ADDRESS: &[u8; 4] = &[0, 0, 0, 0];
     const YOUR_ADDRESS: &[u8; 4] = &[1, 1, 1, 1];
     const SERVER_ADDRESS: &[u8; 4] = &[2, 2, 2, 2];
@@ -311,7 +328,7 @@ mod test {
         assert_eq!(dhcp.hops, HOPS);
         assert_eq!(dhcp.xid, u32::from_be_bytes(*XID));
         assert_eq!(dhcp.seconds, u16::from_be_bytes(*SECONDS));
-        assert_eq!(dhcp.flags, u16::from_be_bytes(*FLAGS));
+        assert_eq!(dhcp.flags, Flags { broadcast: true });
         assert_eq!(
             dhcp.client_address,
             Ipv4Addr::from(u32::from_be_bytes(*CLIENT_ADDRESS))
@@ -382,6 +399,19 @@ mod test {
             bytes[0] = 4;
             let (_, result) = parse_dhcp(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Acknowledgement);
+        }
+    }
+
+    mod dhcp_flags {
+        use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option};
+
+        #[test]
+        fn acknowledgement() {
+            let mut bytes = test_message_no_option();
+            bytes[10] = 0b10000000;
+            bytes[11] = 0x00;
+            let (_, result) = parse_dhcp(&bytes).unwrap();
+            assert!(result.flags.broadcast)
         }
     }
 
