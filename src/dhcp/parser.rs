@@ -350,8 +350,26 @@ mod test {
 
         #[test]
         fn message_type() {
-            let dhcp_options = [53, 1, 1];
+            for message_type_byte in [1, 2, 3, 5, 7] {
+                let dhcp_options = [53, 1, message_type_byte];
+                let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+                let dhcp = parse_dhcp(&bytes).unwrap();
+                assert_eq!(dhcp.as_byte_vec(), bytes);
+            }
+        }
+
+        #[test]
+        fn arp_cache_timeout() {
+            let dhcp_options = [35, 4, 1, 2, 3, 4];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let dhcp = parse_dhcp(&bytes).unwrap();
+            assert_eq!(dhcp.as_byte_vec(), bytes);
+        }
+
+        #[test]
+        fn path_mtu_table() {
+            let options = [25, 2, 10, 10];
+            let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
             assert_eq!(dhcp.as_byte_vec(), bytes);
         }
