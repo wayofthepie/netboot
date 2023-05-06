@@ -11,7 +11,7 @@ use super::models::{
 };
 
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
-    let mut bytes = vec![];
+    let mut bytes = Vec::with_capacity(750);
     let operation = match dhcp.operation {
         Operation::Discover => DISCOVER_OPERATION,
         Operation::Offer => OFFER_OPERATION,
