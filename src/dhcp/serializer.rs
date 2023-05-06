@@ -82,8 +82,9 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
             (DhcpOption::Router, DhcpOptionValue::Router(address)) => {
                 let address_bytes = address.octets();
                 let len = address_bytes.len() as u8;
-                let mut data = [[OPTION_ROUTER, len].as_slice(), address_bytes.as_slice()].concat();
-                bytes.append(&mut data);
+                let option = [OPTION_ROUTER, len];
+                bytes.extend_from_slice(&option);
+                bytes.extend_from_slice(&address_bytes)
             }
             _ => todo!(),
         }
