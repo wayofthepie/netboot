@@ -72,13 +72,12 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
             }
             (DhcpOption::PathMTUPlateauTable, DhcpOptionValue::PathMTUPlateauTable(table)) => {
                 let len = table.len() as u8 * 2;
-                let table_bytes: Vec<u8> = table.iter().flat_map(|num| num.to_be_bytes()).collect();
-                let mut data = [
-                    [OPTION_PATH_MTU_PLATEAU_TABLE, len].as_slice(),
-                    &table_bytes,
-                ]
-                .concat();
-                bytes.append(&mut data);
+                let option = [OPTION_PATH_MTU_PLATEAU_TABLE, len];
+                bytes.extend_from_slice(&option);
+                for num in table {
+                    let num_bytes = num.to_be_bytes();
+                    bytes.extend_from_slice(&num_bytes);
+                }
             }
             (DhcpOption::Router, DhcpOptionValue::Router(address)) => {
                 let address_bytes = address.octets();

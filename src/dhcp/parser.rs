@@ -368,7 +368,7 @@ mod test {
 
         #[test]
         fn path_mtu_table() {
-            let options = [25, 2, 10, 10];
+            let options = [25, 4, 10, 32, 100, 23];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
             assert_eq!(dhcp.as_byte_vec(), bytes);
