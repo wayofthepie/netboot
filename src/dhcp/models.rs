@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::Ipv4Addr};
 
-use super::serialize::serialize_dhcp;
+use super::serializer::serialize_dhcp;
 
 pub const MAGIC_COOKIE: u32 = 0x63825363;
 pub const OPTION_MESSAGE_TYPE: u8 = 53;
