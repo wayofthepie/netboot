@@ -44,21 +44,18 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
     for option in options.iter() {
         match option {
             (DhcpOption::MessageType, DhcpOptionValue::MessageType(message_type)) => {
-                bytes.append(&mut serialize_dhcp_message_type(message_type))
+                bytes.extend_from_slice(&serialize_dhcp_message_type(message_type))
             }
             (DhcpOption::ArpCacheTimeout, DhcpOptionValue::ArpCacheTimeout(timeout)) => {
-                let timeout_bytes = timeout.to_be_bytes();
-                let mut data = [
-                    [OPTION_ARP_CACHE_TIMEOUT, 4].as_slice(),
-                    timeout_bytes.as_slice(),
-                ]
-                .concat();
-                bytes.append(&mut data)
+                let option = [OPTION_ARP_CACHE_TIMEOUT, 4];
+                let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
+                bytes.extend_from_slice(&option);
+                bytes.extend_from_slice(&timeout_bytes);
             }
             (DhcpOption::SubnetMask, DhcpOptionValue::SubnetMask(mask)) => {
-                let mut data =
-                    [[OPTION_SUBNET_MASK, 4].as_slice(), mask.octets().as_slice()].concat();
-                bytes.append(&mut data);
+                let option = [OPTION_SUBNET_MASK, 4];
+                bytes.extend_from_slice(&option);
+                bytes.extend_from_slice(&mask.octets());
             }
             (DhcpOption::LogServer, DhcpOptionValue::LogServer(_)) => todo!(),
             (
@@ -66,16 +63,12 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
                 DhcpOptionValue::ResourceLocationProtocolServer(addresses),
             ) => {
                 let len = addresses.len() as u8 * 4;
-                let address_bytes: Vec<u8> = addresses
-                    .iter()
-                    .flat_map(|&address| address.octets())
-                    .collect();
-                let mut data = [
-                    [OPTION_RESOURCE_LOCATION_SERVER, len].as_slice(),
-                    address_bytes.as_slice(),
-                ]
-                .concat();
-                bytes.append(&mut data);
+                let option = [OPTION_RESOURCE_LOCATION_SERVER, len];
+                bytes.extend_from_slice(&option);
+                for address in addresses {
+                    let address_bytes = address.octets();
+                    bytes.extend_from_slice(&address_bytes);
+                }
             }
             (DhcpOption::PathMTUPlateauTable, DhcpOptionValue::PathMTUPlateauTable(table)) => {
                 let len = table.len() as u8 * 2;
@@ -99,10 +92,8 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
     bytes
 }
 
-fn serialize_dhcp_message_type(message_type: &MessageType) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(3);
-    bytes.push(OPTION_MESSAGE_TYPE);
-    bytes.push(1);
+fn serialize_dhcp_message_type(message_type: &MessageType) -> [u8; 3] {
+    let mut bytes = [OPTION_MESSAGE_TYPE, 1, 0];
     let value = match message_type {
         MessageType::Discover => OPTION_MESSAGE_TYPE_DISCOVER,
         MessageType::Offer => OPTION_MESSAGE_TYPE_OFFER,
@@ -110,6 +101,6 @@ fn serialize_dhcp_message_type(message_type: &MessageType) -> Vec<u8> {
         MessageType::Acknowledgement => OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT,
         MessageType::Release => OPTION_MESSAGE_TYPE_RELEASE,
     };
-    bytes.push(value);
+    bytes[2] = value;
     bytes
 }
