@@ -158,7 +158,7 @@ fn parse_dhcp_option(
                 ),
             ))
         }
-        [OPTION_SUBNET_MASK, len, ref rest @ ..] => {
+        [OPTION_SUBNET_MASK, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
             Ok((

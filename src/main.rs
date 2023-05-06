@@ -10,6 +10,7 @@ use crate::dhcp::{
     parser::parse_dhcp,
 };
 
+// Just some hacking :)
 #[tokio::main]
 async fn main() -> io::Result<()> {
     tracing_subscriber::registry()
@@ -17,7 +18,7 @@ async fn main() -> io::Result<()> {
         .init();
 
     if args().len() > 1 {
-        let sock = UdpSocket::bind("192.168.122.1:0").await?;
+        let sock = UdpSocket::bind("0.0.0.0:68").await?;
         sock.set_broadcast(true)?;
         let hwaddr = vec![];
         let mut options = DhcpOptions::new();
@@ -46,14 +47,22 @@ async fn main() -> io::Result<()> {
             options,
         };
 
-        sock.connect("192.168.122.1:67").await.unwrap();
-        let len = sock.send(&dhcp_discover.as_byte_vec()).await.unwrap();
+        let len = sock
+            .send_to(&dhcp_discover.as_byte_vec(), "255.255.255.255:67")
+            .await
+            .unwrap();
         println!("sent {:#?}", len);
-        return Ok(());
+        let mut buf = vec![];
+
+        loop {
+            let rec = sock.recv(&mut buf).await?;
+            println!("received {}", rec);
+        }
     }
     let mut buf = [0; 1024];
+    let sock = UdpSocket::bind("0.0.0.0:67").await?;
+    sock.set_broadcast(true)?;
     loop {
-        let sock = UdpSocket::bind("0.0.0.0:67").await?;
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
 
@@ -82,7 +91,9 @@ async fn main() -> io::Result<()> {
             dhcp.options = offer_options;
             println!("offer {:#?}", dhcp);
 
-            let len = sock.send_to(&dhcp.as_byte_vec(), addr).await?;
+            let len = sock
+                .send_to(&dhcp.as_byte_vec(), "192.168.122.255:68")
+                .await?;
             println!("{:?} bytes sent", len);
         }
     }
