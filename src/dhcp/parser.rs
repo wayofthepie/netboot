@@ -338,7 +338,13 @@ mod test {
     }
 
     mod dhcp_serialize {
-        use crate::dhcp::parser::{parse_dhcp, test::test_message_no_option};
+        use std::collections::HashMap;
+
+        use crate::dhcp::{
+            error::DhcpSerializeError,
+            models::{DhcpOption, DhcpOptionValue},
+            parser::{parse_dhcp, test::test_message_no_option},
+        };
 
         #[test]
         fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
@@ -396,6 +402,21 @@ mod test {
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
             assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
+        }
+
+        #[test]
+        fn should_fail() {
+            let bytes = test_message_no_option();
+            let mut dhcp = parse_dhcp(&bytes).unwrap();
+            let mut options = HashMap::new();
+            options.insert(DhcpOption::MessageType, DhcpOptionValue::ArpCacheTimeout(1));
+            dhcp.options = options;
+            let result = dhcp.as_byte_vec();
+            assert!(result.is_err());
+            assert_eq!(
+                result.err().unwrap(),
+                DhcpSerializeError::InvalidDhcpOptionValue
+            );
         }
     }
 

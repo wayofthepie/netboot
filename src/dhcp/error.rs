@@ -20,7 +20,7 @@ impl<I> ParseError<I> for DHCPMessageError<I> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DhcpSerializeError {
     InvalidDhcpOptionValue,
 }
