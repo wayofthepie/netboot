@@ -345,7 +345,7 @@ mod test {
             let dhcp_options = [53, 1, 2];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
 
         #[test]
@@ -354,7 +354,7 @@ mod test {
                 let dhcp_options = [53, 1, message_type_byte];
                 let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
                 let dhcp = parse_dhcp(&bytes).unwrap();
-                assert_eq!(dhcp.as_byte_vec(), bytes);
+                assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
             }
         }
 
@@ -363,7 +363,7 @@ mod test {
             let dhcp_options = [35, 4, 1, 2, 3, 4];
             let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
 
         #[test]
@@ -371,7 +371,7 @@ mod test {
             let options = [25, 4, 10, 32, 100, 23];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
 
         #[test]
@@ -379,7 +379,7 @@ mod test {
             let options = [3, 4, 10, 10, 10, 10];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
 
         #[test]
@@ -387,7 +387,7 @@ mod test {
             let options = [11, 4, 1, 2, 3, 4];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
 
         #[test]
@@ -395,7 +395,7 @@ mod test {
             let options = [7, 4, 1, 2, 3, 4];
             let bytes = [&test_message_no_option(), options.as_slice()].concat();
             let dhcp = parse_dhcp(&bytes).unwrap();
-            assert_eq!(dhcp.as_byte_vec(), bytes);
+            assert_eq!(dhcp.as_byte_vec().unwrap(), bytes);
         }
     }
 

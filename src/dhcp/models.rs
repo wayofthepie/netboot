@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::Ipv4Addr};
 
-use super::serializer::serialize_dhcp;
+use super::{error::DhcpSerializeError, serializer::serialize_dhcp};
 
 pub const MAGIC_COOKIE: u32 = 0x63825363;
 pub const OPTION_MESSAGE_TYPE: u8 = 53;
@@ -42,7 +42,7 @@ pub struct DhcpMessage<'a> {
 }
 
 impl DhcpMessage<'_> {
-    pub fn as_byte_vec(&self) -> Vec<u8> {
+    pub fn as_byte_vec(&self) -> Result<Vec<u8>, DhcpSerializeError> {
         serialize_dhcp(self)
     }
 }

@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 
-use super::models::{
-    DhcpMessage, DhcpOption, DhcpOptionValue, HardwareType, MessageType, Operation,
-    ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
-    IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT,
-    OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT,
-    OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE,
-    OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER,
-    OPTION_ROUTER, OPTION_SUBNET_MASK,
+use super::{
+    error::DhcpSerializeError,
+    models::{
+        DhcpMessage, DhcpOption, DhcpOptionValue, HardwareType, MessageType, Operation,
+        ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
+        IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT,
+        OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT,
+        OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE,
+        OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
+        OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER, OPTION_SUBNET_MASK,
+    },
 };
 
-pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
+pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Result<Vec<u8>, DhcpSerializeError> {
     let mut bytes = Vec::with_capacity(750);
     let operation = match dhcp.operation {
         Operation::Discover => DISCOVER_OPERATION,
@@ -35,11 +38,13 @@ pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
     bytes.extend_from_slice(&client_hardware_address_padded);
     bytes.extend_from_slice(&[0; 192]);
     bytes.extend_from_slice(&MAGIC_COOKIE.to_be_bytes());
-    bytes.extend_from_slice(&serialize_dhcp_options(&dhcp.options));
-    bytes
+    bytes.extend_from_slice(&serialize_dhcp_options(&dhcp.options)?);
+    Ok(bytes)
 }
 
-fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec<u8> {
+fn serialize_dhcp_options(
+    options: &HashMap<DhcpOption, DhcpOptionValue>,
+) -> Result<Vec<u8>, DhcpSerializeError> {
     let mut bytes = vec![];
     for option in options.iter() {
         match option {
@@ -94,10 +99,10 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
                 bytes.extend_from_slice(&option);
                 bytes.extend_from_slice(&address_bytes)
             }
-            _ => todo!(),
+            _ => Err(DhcpSerializeError::InvalidDhcpOptionValue)?,
         }
     }
-    bytes
+    Ok(bytes)
 }
 
 fn serialize_dhcp_message_type(message_type: &MessageType) -> [u8; 3] {

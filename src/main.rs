@@ -48,7 +48,7 @@ async fn main() -> io::Result<()> {
         };
 
         let len = sock
-            .send_to(&dhcp_discover.as_byte_vec(), "255.255.255.255:67")
+            .send_to(&dhcp_discover.as_byte_vec().unwrap(), "255.255.255.255:67")
             .await
             .unwrap();
         println!("sent {:#?}", len);
@@ -92,7 +92,7 @@ async fn main() -> io::Result<()> {
             println!("offer {:#?}", dhcp);
 
             let len = sock
-                .send_to(&dhcp.as_byte_vec(), "192.168.122.255:68")
+                .send_to(&dhcp.as_byte_vec().unwrap(), "192.168.122.255:68")
                 .await?;
             println!("{:?} bytes sent", len);
         }
