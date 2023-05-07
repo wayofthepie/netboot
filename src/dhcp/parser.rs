@@ -35,7 +35,7 @@ fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError<&[u
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
     let seconds = u16::from_be_bytes(raw.seconds.to_owned());
-    let flags = parse_flags(raw.flags)?;
+    let flags = parse_flags(raw.flags);
     let client_address = Ipv4Addr::from(*raw.client_address);
     let your_address = Ipv4Addr::from(*raw.your_address);
     let server_address = Ipv4Addr::from(*raw.server_address);
@@ -222,11 +222,11 @@ fn parse_dhcp_option(
 }
 
 const BROADCAST_BIT: usize = 15;
-fn parse_flags(flags: &[u8; 2]) -> Result<Flags, nom::Err<DhcpMessageError<&[u8]>>> {
+fn parse_flags(flags: &[u8; 2]) -> Flags {
     let flags = u16::from_be_bytes(*flags);
-    Ok(Flags {
+    Flags {
         broadcast: is_bit_set(BROADCAST_BIT, flags),
-    })
+    }
 }
 
 fn is_bit_set(index: usize, num: u16) -> bool {
