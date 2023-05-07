@@ -4,10 +4,10 @@ use super::models::{
     DhcpMessage, DhcpOption, DhcpOptionValue, HardwareType, MessageType, Operation,
     ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
     IEE801_11WIRELESS_HARDWARE_TYPE, MAGIC_COOKIE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT,
-    OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER,
-    OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST,
-    OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER,
-    OPTION_SUBNET_MASK,
+    OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT,
+    OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE,
+    OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER,
+    OPTION_ROUTER, OPTION_SUBNET_MASK,
 };
 
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Vec<u8> {
@@ -57,7 +57,15 @@ fn serialize_dhcp_options(options: &HashMap<DhcpOption, DhcpOptionValue>) -> Vec
                 bytes.extend_from_slice(&option);
                 bytes.extend_from_slice(&mask.octets());
             }
-            (DhcpOption::LogServer, DhcpOptionValue::LogServer(_)) => todo!(),
+            (DhcpOption::LogServer, DhcpOptionValue::LogServer(servers)) => {
+                let len = servers.len() as u8 * 4;
+                let option = [OPTION_LOG_SERVER, len];
+                bytes.extend_from_slice(&option);
+                for server in servers {
+                    let server_bytes = server.octets();
+                    bytes.extend_from_slice(&server_bytes);
+                }
+            }
             (
                 DhcpOption::ResourceLocationProtocolServer,
                 DhcpOptionValue::ResourceLocationProtocolServer(addresses),

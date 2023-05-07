@@ -389,6 +389,14 @@ mod test {
             let dhcp = parse_dhcp(&bytes).unwrap();
             assert_eq!(dhcp.as_byte_vec(), bytes);
         }
+
+        #[test]
+        fn log_server() {
+            let options = [7, 4, 1, 2, 3, 4];
+            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let dhcp = parse_dhcp(&bytes).unwrap();
+            assert_eq!(dhcp.as_byte_vec(), bytes);
+        }
     }
 
     mod dhcp_hardware_types {
