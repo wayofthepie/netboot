@@ -16,6 +16,7 @@ use super::models::{
     OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
     OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER, OPTION_SUBNET_MASK,
 };
+use super::REQUEST_OPERATION;
 
 pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError<&[u8]>> {
     match parse_dhcp(bytes) {
@@ -246,6 +247,7 @@ fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError<&'a
     match byte {
         DISCOVER_OPERATION => Ok(Operation::Discover),
         OFFER_OPERATION => Ok(Operation::Offer),
+        REQUEST_OPERATION => Ok(Operation::Request),
         ACKNOWLEDGEMENT_OPERATION => Ok(Operation::Acknowledgement),
         _ => Err(nom::Err::Error(DhcpMessageError::InvalidOperation)),
     }

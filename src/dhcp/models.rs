@@ -23,6 +23,7 @@ pub const OPTION_ROUTER: u8 = 3;
 
 pub const DISCOVER_OPERATION: u8 = 1;
 pub const OFFER_OPERATION: u8 = 2;
+pub const REQUEST_OPERATION: u8 = 3;
 pub const ACKNOWLEDGEMENT_OPERATION: u8 = 4;
 
 pub const ETHERNET_HARDWARE_TYPE: u8 = 1;
@@ -55,10 +56,11 @@ impl DhcpMessage<'_> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operation {
     Discover,
     Offer,
+    Request,
     Acknowledgement,
 }
 

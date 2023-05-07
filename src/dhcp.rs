@@ -92,13 +92,52 @@ mod test {
     }
 
     mod dhcp_serialize {
-        use std::collections::HashMap;
+        use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
 
         use crate::dhcp::{
             error::DhcpSerializeError,
             models::{DhcpMessage, DhcpOption, DhcpOptionValue},
             test::test_message_no_option,
+            Flags, HardwareType, Operation,
         };
+
+        fn test_dhcp_message<'a>() -> DhcpMessage<'a> {
+            DhcpMessage {
+                operation: Operation::Discover,
+                hardware_type: HardwareType::Ethernet,
+                hardware_len: 6,
+                hops: 0,
+                xid: 0,
+                seconds: 0,
+                flags: Flags { broadcast: true },
+                client_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+                your_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+                server_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+                gateway_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+                client_hardware_address: &[0, 0, 0, 0, 0, 0],
+                options: HashMap::new(),
+            }
+        }
+
+        #[test]
+        fn serialize_all_operations() {
+            let ops = [
+                (1, Operation::Discover),
+                (2, Operation::Offer),
+                (3, Operation::Request),
+                (4, Operation::Acknowledgement),
+            ];
+            let mut test_dhcp_message = test_dhcp_message();
+            for (byte, operation) in ops {
+                test_dhcp_message.operation = operation;
+                let bytes = test_dhcp_message.serialize().unwrap();
+                assert_eq!(
+                    bytes[0], byte,
+                    "byte value {} does not match expected {} for option {:?}",
+                    bytes[0], byte, operation
+                );
+            }
+        }
 
         #[test]
         fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
@@ -217,6 +256,14 @@ mod test {
             bytes[0] = 2;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Offer);
+        }
+
+        #[test]
+        fn request() {
+            let mut bytes = test_message_no_option();
+            bytes[0] = 3;
+            let result = DhcpMessage::deserialize(&bytes).unwrap();
+            assert_eq!(result.operation, Operation::Request);
         }
 
         #[test]

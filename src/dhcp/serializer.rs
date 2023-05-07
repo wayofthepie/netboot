@@ -11,6 +11,7 @@ use super::{
         OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
         OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER, OPTION_SUBNET_MASK,
     },
+    REQUEST_OPERATION,
 };
 
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Result<Vec<u8>, DhcpSerializeError> {
@@ -18,6 +19,7 @@ pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Result<Vec<u8>, DhcpSerializeError>
     let operation = match dhcp.operation {
         Operation::Discover => DISCOVER_OPERATION,
         Operation::Offer => OFFER_OPERATION,
+        Operation::Request => REQUEST_OPERATION,
         Operation::Acknowledgement => ACKNOWLEDGEMENT_OPERATION,
     };
     let hardware_type = match dhcp.hardware_type {
