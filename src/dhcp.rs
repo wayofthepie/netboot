@@ -3,22 +3,16 @@ mod models;
 mod parser;
 mod serializer;
 
-use std::marker::PhantomData;
-
 use bytes::{BufMut, BytesMut};
 pub use error::*;
 pub use models::*;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub struct DhcpCodec {
-    marker: PhantomData<&'static ()>,
-}
+pub struct DhcpCodec;
 
 impl DhcpCodec {
     pub fn new() -> Self {
-        Self {
-            marker: PhantomData,
-        }
+        Self
     }
 }
 
