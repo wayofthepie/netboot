@@ -16,8 +16,16 @@ use tokio_util::udp::UdpFramed;
 use tracing_subscriber::prelude::*;
 
 // Just some hacking :)
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_name("netboot")
+        .enable_io()
+        .build()?;
+    rt.block_on(async { init().await })
+}
+
+async fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -27,8 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut sink, mut stream) = UdpFramed::new(sock, DhcpCodec::new()).split();
     while let Some((msg, _)) = stream.try_next().await? {
-        println!("{msg:?}");
-
+        tracing::debug!("{:#?}", msg);
         match msg.operation {
             dhcp::Operation::Discover => handle_discover(msg, &mut sink).await,
             dhcp::Operation::Offer => todo!(),

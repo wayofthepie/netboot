@@ -24,7 +24,7 @@ impl DhcpCodec {
 
 impl Decoder for DhcpCodec {
     type Item = DhcpMessage;
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if src.is_empty() {
@@ -37,7 +37,7 @@ impl Decoder for DhcpCodec {
 }
 
 impl Encoder<DhcpMessage> for DhcpCodec {
-    type Error = Box<dyn std::error::Error>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn encode(&mut self, item: DhcpMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let bytes = item.serialize()?;
