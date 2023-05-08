@@ -3,12 +3,52 @@ mod models;
 mod parser;
 mod serializer;
 
+use std::marker::PhantomData;
+
+use bytes::{BufMut, BytesMut};
 pub use error::*;
 pub use models::*;
+use tokio_util::codec::{Decoder, Encoder};
+
+pub struct DhcpCodec {
+    marker: PhantomData<&'static ()>,
+}
+
+impl DhcpCodec {
+    pub fn new() -> Self {
+        Self {
+            marker: PhantomData,
+        }
+    }
+}
+
+impl Decoder for DhcpCodec {
+    type Item = DhcpMessage;
+    type Error = Box<dyn std::error::Error>;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.is_empty() {
+            return Ok(None);
+        }
+        let msg = DhcpMessage::deserialize(src)?;
+        let _ = src.split_to(src.len());
+        Ok(Some(msg))
+    }
+}
+
+impl Encoder<DhcpMessage> for DhcpCodec {
+    type Error = Box<dyn std::error::Error>;
+
+    fn encode(&mut self, item: DhcpMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = item.serialize()?;
+        dst.put(bytes.as_slice());
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod test {
-    use std::net::Ipv4Addr;
+    use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
 
     use crate::dhcp::models::{
         DhcpMessage, DhcpOption, DhcpOptionValue, Flags, HardwareType, Operation, MAGIC_COOKIE,
@@ -29,7 +69,7 @@ mod test {
     const CLIENT_HARDWARE_ADDRESS: &[u8; 16] = &[3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     #[rustfmt::skip]
-    fn test_message_no_option() -> Vec<u8> {
+    fn build_dhcp_message_bytes_no_option() -> Vec<u8> {
         let single_bytes = vec![OPERATION, HARDWARE_TYPE, HARDWARE_LEN, HOPS];
         let xid = XID.to_vec();
         let seconds = SECONDS.to_vec();
@@ -47,12 +87,30 @@ mod test {
         ].concat()
     }
 
+    fn build_dhcp_message() -> DhcpMessage {
+        DhcpMessage {
+            operation: Operation::Discover,
+            hardware_type: HardwareType::Ethernet,
+            hardware_len: 6,
+            hops: 0,
+            xid: 0,
+            seconds: 0,
+            flags: Flags { broadcast: true },
+            client_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+            your_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+            server_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+            gateway_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
+            client_hardware_address: vec![0, 0, 0, 0, 0, 0],
+            options: HashMap::new(),
+        }
+    }
+
     #[test]
     fn should_parse_dhcp_message() {
         let timeout_ms = 600_u32;
         let timeout_bytes = &timeout_ms.to_be_bytes();
         let bytes = [
-            test_message_no_option().as_slice(),
+            build_dhcp_message_bytes_no_option().as_slice(),
             &[OPTION_ARP_CACHE_TIMEOUT, 4],
             timeout_bytes,
         ]
@@ -91,33 +149,53 @@ mod test {
         );
     }
 
+    mod dhcp_codec {
+        use bytes::BytesMut;
+        use tokio_util::codec::{Decoder, Encoder};
+
+        use crate::dhcp::{DhcpCodec, DhcpMessage};
+
+        use super::{build_dhcp_message, build_dhcp_message_bytes_no_option};
+
+        #[test]
+        fn should_encode() {
+            let mut buf = BytesMut::new();
+            let mut codec = DhcpCodec::new();
+            let dhcp = build_dhcp_message();
+            let expected_bytes = dhcp.serialize().unwrap();
+            codec.encode(dhcp, &mut buf).unwrap();
+            assert_eq!(expected_bytes, buf.as_ref());
+        }
+
+        #[test]
+        fn should_decode() {
+            let mut dhcp_bytes = BytesMut::from_iter(build_dhcp_message_bytes_no_option());
+            let mut codec = DhcpCodec::new();
+            let expected_dhcp = DhcpMessage::deserialize(&dhcp_bytes).unwrap();
+            let result = codec.decode(&mut dhcp_bytes).unwrap().unwrap();
+            assert_eq!(expected_dhcp, result);
+        }
+
+        #[test]
+        fn decode_should_return_none_if_empty() {
+            let mut bytes = BytesMut::new();
+            let mut codec = DhcpCodec::new();
+            let result = codec.decode(&mut bytes).unwrap();
+            assert!(result.is_none());
+        }
+    }
+
     mod dhcp_serialize {
-        use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
+        use std::collections::HashMap;
 
         use crate::dhcp::{
             error::DhcpSerializeError,
             models::{DhcpMessage, DhcpOption, DhcpOptionValue},
-            test::test_message_no_option,
-            Flags, HardwareType, Operation,
+            test::build_dhcp_message_bytes_no_option,
+            Operation,
         };
 
-        fn test_dhcp_message<'a>() -> DhcpMessage<'a> {
-            DhcpMessage {
-                operation: Operation::Discover,
-                hardware_type: HardwareType::Ethernet,
-                hardware_len: 6,
-                hops: 0,
-                xid: 0,
-                seconds: 0,
-                flags: Flags { broadcast: true },
-                client_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
-                your_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
-                server_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
-                gateway_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
-                client_hardware_address: &[0, 0, 0, 0, 0, 0],
-                options: HashMap::new(),
-            }
-        }
+        use super::build_dhcp_message;
 
         #[test]
         fn serialize_all_operations() {
@@ -127,7 +205,7 @@ mod test {
                 (3, Operation::Request),
                 (4, Operation::Acknowledgement),
             ];
-            let mut test_dhcp_message = test_dhcp_message();
+            let mut test_dhcp_message = build_dhcp_message();
             for (byte, operation) in ops {
                 test_dhcp_message.operation = operation;
                 let bytes = test_dhcp_message.serialize().unwrap();
@@ -142,7 +220,11 @@ mod test {
         #[test]
         fn parsing_then_serializing_back_to_bytes_should_be_isomorphic() {
             let dhcp_options = [53, 1, 2];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
@@ -151,7 +233,11 @@ mod test {
         fn message_type() {
             for message_type_byte in [1, 2, 3, 5, 7] {
                 let dhcp_options = [53, 1, message_type_byte];
-                let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+                let bytes = [
+                    &build_dhcp_message_bytes_no_option(),
+                    dhcp_options.as_slice(),
+                ]
+                .concat();
                 let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
                 assert_eq!(dhcp.serialize().unwrap(), bytes);
             }
@@ -160,7 +246,11 @@ mod test {
         #[test]
         fn arp_cache_timeout() {
             let dhcp_options = [35, 4, 1, 2, 3, 4];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
@@ -168,7 +258,7 @@ mod test {
         #[test]
         fn path_mtu_table() {
             let options = [25, 4, 10, 32, 100, 23];
-            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let bytes = [&build_dhcp_message_bytes_no_option(), options.as_slice()].concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
@@ -176,7 +266,7 @@ mod test {
         #[test]
         fn router() {
             let options = [3, 4, 10, 10, 10, 10];
-            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let bytes = [&build_dhcp_message_bytes_no_option(), options.as_slice()].concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
@@ -184,7 +274,7 @@ mod test {
         #[test]
         fn resource_location_protocol_server() {
             let options = [11, 4, 1, 2, 3, 4];
-            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let bytes = [&build_dhcp_message_bytes_no_option(), options.as_slice()].concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
@@ -192,14 +282,14 @@ mod test {
         #[test]
         fn log_server() {
             let options = [7, 4, 1, 2, 3, 4];
-            let bytes = [&test_message_no_option(), options.as_slice()].concat();
+            let bytes = [&build_dhcp_message_bytes_no_option(), options.as_slice()].concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
         }
 
         #[test]
         fn should_fail() {
-            let bytes = test_message_no_option();
+            let bytes = build_dhcp_message_bytes_no_option();
             let mut dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             let mut options = HashMap::new();
             options.insert(DhcpOption::MessageType, DhcpOptionValue::ArpCacheTimeout(1));
@@ -216,12 +306,12 @@ mod test {
     mod dhcp_hardware_types {
         use crate::dhcp::{
             models::{DhcpMessage, HardwareType},
-            test::test_message_no_option,
+            test::build_dhcp_message_bytes_no_option,
         };
 
         #[test]
         fn ethernet() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[1] = 1;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.hardware_type, HardwareType::Ethernet);
@@ -229,7 +319,7 @@ mod test {
 
         #[test]
         fn ieee_802_11_wireless() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[1] = 40;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.hardware_type, HardwareType::Ieee802_11Wireless);
@@ -239,12 +329,12 @@ mod test {
     mod dhcp_operations {
         use crate::dhcp::{
             models::{DhcpMessage, Operation},
-            test::test_message_no_option,
+            test::build_dhcp_message_bytes_no_option,
         };
 
         #[test]
         fn discover() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[0] = 1;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Discover);
@@ -252,7 +342,7 @@ mod test {
 
         #[test]
         fn offer() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[0] = 2;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Offer);
@@ -260,7 +350,7 @@ mod test {
 
         #[test]
         fn request() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[0] = 3;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Request);
@@ -268,7 +358,7 @@ mod test {
 
         #[test]
         fn acknowledgement() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[0] = 4;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(result.operation, Operation::Acknowledgement);
@@ -276,11 +366,11 @@ mod test {
     }
 
     mod dhcp_flags {
-        use crate::dhcp::{models::DhcpMessage, test::test_message_no_option};
+        use crate::dhcp::{models::DhcpMessage, test::build_dhcp_message_bytes_no_option};
 
         #[test]
         fn acknowledgement() {
-            let mut bytes = test_message_no_option();
+            let mut bytes = build_dhcp_message_bytes_no_option();
             bytes[10] = 0b10000000;
             bytes[11] = 0x00;
             let result = DhcpMessage::deserialize(&bytes).unwrap();
@@ -297,13 +387,17 @@ mod test {
                 OPTION_LOG_SERVER, OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER,
                 OPTION_ROUTER, OPTION_SUBNET_MASK,
             },
-            test::test_message_no_option,
+            test::build_dhcp_message_bytes_no_option,
         };
 
         #[test]
         fn dhcp_message_type_discover() {
             let dhcp_options = [53, 1, 1];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(
                 result.options.get(&DhcpOption::MessageType).unwrap(),
@@ -314,7 +408,11 @@ mod test {
         #[test]
         fn dhcp_message_type_offer() {
             let dhcp_options = [53, 1, 2];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(
                 result.options.get(&DhcpOption::MessageType).unwrap(),
@@ -325,7 +423,11 @@ mod test {
         #[test]
         fn dhcp_message_type_request() {
             let dhcp_options = [53, 1, 3];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(
                 result.options.get(&DhcpOption::MessageType).unwrap(),
@@ -336,7 +438,11 @@ mod test {
         #[test]
         fn dhcp_message_type_acknowledgement() {
             let dhcp_options = [53, 1, 5];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(
                 result.options.get(&DhcpOption::MessageType).unwrap(),
@@ -347,7 +453,11 @@ mod test {
         #[test]
         fn dhcp_message_type_release() {
             let dhcp_options = [53, 1, 7];
-            let bytes = [&test_message_no_option(), dhcp_options.as_slice()].concat();
+            let bytes = [
+                &build_dhcp_message_bytes_no_option(),
+                dhcp_options.as_slice(),
+            ]
+            .concat();
             let result = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(
                 result.options.get(&DhcpOption::MessageType).unwrap(),
@@ -361,7 +471,7 @@ mod test {
             let timeout_bytes: [u8; 4] = timeout.to_be_bytes();
             let dhcp_options: [u8; 2] = [OPTION_ARP_CACHE_TIMEOUT, 4];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_options.as_slice(),
                 timeout_bytes.as_slice(),
             ]
@@ -380,7 +490,7 @@ mod test {
             let subnet_mask_bytes: [u8; 4] = subnet_mask_bytes.to_be_bytes();
             let dhcp_option: [u8; 2] = [OPTION_SUBNET_MASK, 4];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_option.as_slice(),
                 subnet_mask_bytes.as_slice(),
             ]
@@ -401,7 +511,7 @@ mod test {
                 .collect();
             let dhcp_option: [u8; 2] = [OPTION_LOG_SERVER, 8];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_option.as_slice(),
                 log_servers_bytes.as_slice(),
             ]
@@ -422,7 +532,7 @@ mod test {
                 .collect();
             let dhcp_option: [u8; 2] = [OPTION_RESOURCE_LOCATION_SERVER, 8];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_option.as_slice(),
                 rlp_servers_bytes.as_slice(),
             ]
@@ -443,7 +553,7 @@ mod test {
             let sizes_bytes: Vec<u8> = sizes.iter().copied().flat_map(u16::to_be_bytes).collect();
             let dhcp_option: [u8; 2] = [OPTION_PATH_MTU_PLATEAU_TABLE, 4];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_option.as_slice(),
                 sizes_bytes.as_slice(),
             ]
@@ -463,7 +573,7 @@ mod test {
             let address = Ipv4Addr::from_str("192.168.1.1").unwrap();
             let dhcp_option: [u8; 2] = [OPTION_ROUTER, 4];
             let bytes = [
-                &test_message_no_option(),
+                &build_dhcp_message_bytes_no_option(),
                 dhcp_option.as_slice(),
                 address.octets().as_slice(),
             ]

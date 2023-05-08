@@ -30,7 +30,7 @@ pub const ETHERNET_HARDWARE_TYPE: u8 = 1;
 pub const IEE801_11WIRELESS_HARDWARE_TYPE: u8 = 40;
 
 #[derive(Debug, PartialEq)]
-pub struct DhcpMessage<'a> {
+pub struct DhcpMessage {
     pub operation: Operation,
     pub hardware_type: HardwareType,
     pub hardware_len: u8,
@@ -42,16 +42,16 @@ pub struct DhcpMessage<'a> {
     pub your_address: Ipv4Addr,
     pub server_address: Ipv4Addr,
     pub gateway_address: Ipv4Addr,
-    pub client_hardware_address: &'a [u8],
+    pub client_hardware_address: Vec<u8>,
     pub options: DhcpOptions,
 }
 
-impl DhcpMessage<'_> {
+impl DhcpMessage {
     pub fn serialize(&self) -> Result<Vec<u8>, DhcpSerializeError> {
         serialize_dhcp(self)
     }
 
-    pub fn deserialize(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError<&[u8]>> {
+    pub fn deserialize(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError> {
         deserialize_dhcp(bytes)
     }
 }

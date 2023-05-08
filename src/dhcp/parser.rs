@@ -18,7 +18,7 @@ use super::models::{
 };
 use super::REQUEST_OPERATION;
 
-pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError<&[u8]>> {
+pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError> {
     match parse_dhcp(bytes) {
         Ok(msg) => Ok(msg),
         Err(nom::Err::Error(e)) => Err(e),
@@ -27,7 +27,7 @@ pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError<&[
     }
 }
 
-fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError<&[u8]>>> {
+fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError>> {
     // TODO make sure rest is empty
     let (_, raw) = parse_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
@@ -54,13 +54,13 @@ fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError<&[u
         your_address,
         server_address,
         gateway_address,
-        client_hardware_address,
+        client_hardware_address: client_hardware_address.to_vec(),
         options: DhcpOptions::from_iter(options),
     };
     Ok(dhcp)
 }
 
-fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageError<&[u8]>> {
+fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageError> {
     match bytes {
         &[operation, hardware_type, hardware_len, hops, ref rest @ ..] => {
             let (
@@ -115,7 +115,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageErr
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
 fn parse_dhcp_option(
     bytes: &[u8],
-) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DhcpMessageError<&[u8]>> {
+) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DhcpMessageError> {
     match bytes {
         [OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
             [OPTION_MESSAGE_TYPE_DISCOVER, rest @ ..] => Ok((
@@ -233,17 +233,17 @@ fn is_bit_set(index: usize, num: u16) -> bool {
     num & (1 << index) != 0
 }
 
-fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], &[u8; N], DhcpMessageError<&[u8]>> {
+fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], &[u8; N], DhcpMessageError> {
     map(take(N), |client_address: &[u8]| {
         client_address.try_into().unwrap()
     })(bytes)
 }
 
-fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DhcpMessageError<&[u8]>> {
+fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DhcpMessageError> {
     many0(map(take_n_bytes::<4>, |&bytes| Ipv4Addr::from(bytes)))(bytes)
 }
 
-fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError<&'a [u8]>>> {
+fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError>> {
     match byte {
         DISCOVER_OPERATION => Ok(Operation::Discover),
         OFFER_OPERATION => Ok(Operation::Offer),
@@ -253,9 +253,7 @@ fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError<&'a
     }
 }
 
-fn hardware_type_from_byte<'a>(
-    byte: u8,
-) -> Result<HardwareType, nom::Err<DhcpMessageError<&'a [u8]>>> {
+fn hardware_type_from_byte<'a>(byte: u8) -> Result<HardwareType, nom::Err<DhcpMessageError>> {
     match byte {
         ETHERNET_HARDWARE_TYPE => Ok(HardwareType::Ethernet),
         IEE801_11WIRELESS_HARDWARE_TYPE => Ok(HardwareType::Ieee802_11Wireless),
