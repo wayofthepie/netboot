@@ -19,7 +19,7 @@ use super::models::{
 use super::REQUEST_OPERATION;
 
 pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError> {
-    match parse_dhcp(bytes) {
+    match deserialize_dhcp_internal(bytes) {
         Ok(msg) => Ok(msg),
         Err(nom::Err::Error(e)) => Err(e),
         Err(nom::Err::Failure(e)) => Err(e),
@@ -27,21 +27,21 @@ pub fn deserialize_dhcp(bytes: &[u8]) -> Result<DhcpMessage, DhcpMessageError> {
     }
 }
 
-fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError>> {
+fn deserialize_dhcp_internal(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError>> {
     // TODO make sure rest is empty
-    let (_, raw) = parse_raw_dhcp(bytes)?;
+    let (_, raw) = deserialize_raw_dhcp(bytes)?;
     let operation = op_from_byte(raw.operation)?;
     let hardware_len = raw.hardware_len;
     let hardware_type = hardware_type_from_byte(raw.hardware_type)?;
     let xid = u32::from_be_bytes(raw.xid.to_owned());
     let seconds = u16::from_be_bytes(raw.seconds.to_owned());
-    let flags = parse_flags(raw.flags);
+    let flags = deserialize_flags(raw.flags);
     let client_address = Ipv4Addr::from(*raw.client_address);
     let your_address = Ipv4Addr::from(*raw.your_address);
     let server_address = Ipv4Addr::from(*raw.server_address);
     let gateway_address = Ipv4Addr::from(*raw.gateway_address);
     let (_, client_hardware_address) = take(hardware_len)(raw.client_hardware_address.as_slice())?;
-    let (_, options) = many0(parse_dhcp_option)(raw.options)?;
+    let (_, options) = many0(deserialize_dhcp_option)(raw.options)?;
     let dhcp = DhcpMessage {
         operation,
         hardware_type,
@@ -60,7 +60,7 @@ fn parse_dhcp(bytes: &[u8]) -> Result<DhcpMessage, nom::Err<DhcpMessageError>> {
     Ok(dhcp)
 }
 
-fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageError> {
+fn deserialize_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageError> {
     match bytes {
         &[operation, hardware_type, hardware_len, hops, ref rest @ ..] => {
             let (
@@ -113,7 +113,7 @@ fn parse_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMessageErr
 }
 
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
-fn parse_dhcp_option(
+fn deserialize_dhcp_option(
     bytes: &[u8],
 ) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DhcpMessageError> {
     match bytes {
@@ -182,7 +182,7 @@ fn parse_dhcp_option(
         [OPTION_LOG_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
-            let (_, addresses) = parse_ip_addresses(data)?;
+            let (_, addresses) = deserialize_ip_addresses(data)?;
             Ok((
                 rest,
                 (DhcpOption::LogServer, DhcpOptionValue::LogServer(addresses)),
@@ -191,7 +191,7 @@ fn parse_dhcp_option(
         [OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
-            let (_, addresses) = parse_ip_addresses(data)?;
+            let (_, addresses) = deserialize_ip_addresses(data)?;
             Ok((
                 rest,
                 (
@@ -222,7 +222,7 @@ fn parse_dhcp_option(
 }
 
 const BROADCAST_BIT: usize = 15;
-fn parse_flags(flags: &[u8; 2]) -> Flags {
+fn deserialize_flags(flags: &[u8; 2]) -> Flags {
     let flags = u16::from_be_bytes(*flags);
     Flags {
         broadcast: is_bit_set(BROADCAST_BIT, flags),
@@ -239,7 +239,7 @@ fn take_n_bytes<const N: usize>(bytes: &[u8]) -> IResult<&[u8], &[u8; N], DhcpMe
     })(bytes)
 }
 
-fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DhcpMessageError> {
+fn deserialize_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DhcpMessageError> {
     many0(map(take_n_bytes::<4>, |&bytes| Ipv4Addr::from(bytes)))(bytes)
 }
 

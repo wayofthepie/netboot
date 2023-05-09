@@ -1,8 +1,8 @@
 use std::{collections::HashMap, net::Ipv4Addr};
 
 use super::{
+    deserializer::deserialize_dhcp,
     error::{DhcpMessageError, DhcpSerializeError},
-    parser::deserialize_dhcp,
     serializer::serialize_dhcp,
 };
 

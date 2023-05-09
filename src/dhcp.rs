@@ -1,6 +1,6 @@
+mod deserializer;
 mod error;
 mod models;
-mod parser;
 mod serializer;
 
 use bytes::{BufMut, BytesMut};

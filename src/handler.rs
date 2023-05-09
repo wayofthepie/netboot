@@ -26,8 +26,9 @@ where
     }
 
     pub async fn handle(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        while let Some((msg, _)) = self.stream.try_next().await? {
+        while let Some((msg, addr)) = self.stream.try_next().await? {
             tracing::debug!("{:#?}", msg);
+            tracing::debug!("{:#?}", addr);
             match msg.operation {
                 dhcp::Operation::Discover => self.handle_discover(msg).await,
                 dhcp::Operation::Offer => todo!(),
