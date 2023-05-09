@@ -243,7 +243,7 @@ fn parse_ip_addresses(bytes: &[u8]) -> IResult<&[u8], Vec<Ipv4Addr>, DhcpMessage
     many0(map(take_n_bytes::<4>, |&bytes| Ipv4Addr::from(bytes)))(bytes)
 }
 
-fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError>> {
+fn op_from_byte(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError>> {
     match byte {
         DISCOVER_OPERATION => Ok(Operation::Discover),
         OFFER_OPERATION => Ok(Operation::Offer),
@@ -253,7 +253,7 @@ fn op_from_byte<'a>(byte: u8) -> Result<Operation, nom::Err<DhcpMessageError>> {
     }
 }
 
-fn hardware_type_from_byte<'a>(byte: u8) -> Result<HardwareType, nom::Err<DhcpMessageError>> {
+fn hardware_type_from_byte(byte: u8) -> Result<HardwareType, nom::Err<DhcpMessageError>> {
     match byte {
         ETHERNET_HARDWARE_TYPE => Ok(HardwareType::Ethernet),
         IEE801_11WIRELESS_HARDWARE_TYPE => Ok(HardwareType::Ieee802_11Wireless),
