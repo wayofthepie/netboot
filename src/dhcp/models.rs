@@ -206,4 +206,12 @@ mod test {
             assert_eq!(options.get(&option).unwrap(), &value);
         }
     }
+
+    #[test]
+    fn should_build_from_iterator() {
+        let option = DhcpOptionValue::ArpCacheTimeout(10);
+        let iter = vec![option.clone()];
+        let options = DhcpOptions::from_iter(iter);
+        assert_eq!(options.get(&DhcpOption::ArpCacheTimeout).unwrap(), &option)
+    }
 }

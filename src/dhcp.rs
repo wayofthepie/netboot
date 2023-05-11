@@ -183,11 +183,9 @@ mod test {
     }
 
     mod dhcp_serialize {
-        
 
         use crate::dhcp::{
-            models::{DhcpMessage},
-            test::build_dhcp_message_bytes_no_option, Operation,
+            models::DhcpMessage, test::build_dhcp_message_bytes_no_option, Operation,
         };
 
         use super::build_dhcp_message;
