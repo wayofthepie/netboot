@@ -5,11 +5,14 @@ use std::{
 
 use futures::{Sink, SinkExt, TryStream, TryStreamExt};
 
-use crate::dhcp::{self, DhcpMessage, DhcpOptionValue, DhcpOptions, MessageType, Operation};
+use crate::dhcp::{
+    self, pool::DhcpPool, DhcpMessage, DhcpOptionValue, DhcpOptions, MessageType, Operation,
+};
 
 pub struct Handler<St, Si> {
     stream: St,
     sink: Si,
+    pool: DhcpPool,
 }
 
 impl<St, Si> Handler<St, Si>
@@ -19,8 +22,8 @@ where
     Si: Sink<(DhcpMessage, SocketAddr), Error = Box<dyn std::error::Error + Send + Sync>> + Unpin,
     Si: SinkExt<(DhcpMessage, SocketAddr)>,
 {
-    pub fn new(stream: St, sink: Si) -> Self {
-        Self { stream, sink }
+    pub fn new(stream: St, sink: Si, pool: DhcpPool) -> Self {
+        Self { stream, sink, pool }
     }
 
     pub async fn handle(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -72,8 +75,8 @@ mod test {
     use tokio_stream::wrappers::ReceiverStream;
 
     use crate::dhcp::{
-        DhcpMessage, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
-        Operation,
+        pool::DhcpPool, DhcpMessage, DhcpOptionValue, DhcpOptions, Flags, HardwareType,
+        MessageType, Operation,
     };
 
     use super::Handler;
@@ -177,7 +180,7 @@ mod test {
         let fake_stream = ReceiverStream::new(rx);
         let mut buffer = vec![];
         let fake_sink = FakeSink::new(&mut buffer);
-        let mut handler = Handler::new(fake_stream, fake_sink);
+        let mut handler = Handler::new(fake_stream, fake_sink, DhcpPool::new(vec![]));
         let _ = handler.handle().await;
         let result = buffer.get(0).unwrap();
         let expected_result = expected_offer();

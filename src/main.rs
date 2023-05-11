@@ -1,7 +1,9 @@
 mod dhcp;
 mod handler;
 
-use dhcp::DhcpCodec;
+use std::{net::Ipv4Addr, str::FromStr};
+
+use dhcp::{pool::DhcpPool, DhcpCodec};
 use futures::StreamExt;
 use handler::Handler;
 use tokio::net::UdpSocket;
@@ -23,10 +25,11 @@ async fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let addresses = vec![Ipv4Addr::from_str("192.168.122.150").unwrap()];
     let sock = UdpSocket::bind("0.0.0.0:67").await?;
     sock.set_broadcast(true)?;
 
     let (sink, stream) = UdpFramed::new(sock, DhcpCodec::new()).split();
-    let mut handler = Handler::new(stream, sink);
+    let mut handler = Handler::new(stream, sink, DhcpPool::new(addresses));
     handler.handle().await
 }
