@@ -45,4 +45,15 @@ mod test {
         assert_eq!(allocated, addresses[0]);
         assert_eq!(stored, &addresses[0]);
     }
+
+    #[test]
+    fn should_return_none_if_no_addresses_left() {
+        let mac = MacAddress::from_str("00:00:00:00:00:00").unwrap();
+        let addresses = vec![];
+        let mut pool = DhcpPool::new(addresses);
+        let allocated = pool.allocate(mac);
+        let stored = pool.get(&mac);
+        assert!(allocated.is_none());
+        assert!(stored.is_none());
+    }
 }
