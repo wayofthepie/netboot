@@ -44,18 +44,13 @@ where
         dhcp.your_address = Ipv4Addr::from_str("192.168.122.204").unwrap();
         dhcp.server_address = Ipv4Addr::from_str("192.168.122.1").unwrap();
         let mut options = DhcpOptions::new();
-        options.insert(
-            DhcpOption::MessageType,
-            DhcpOptionValue::MessageType(MessageType::Offer),
-        );
-        options.insert(
-            DhcpOption::SubnetMask,
-            DhcpOptionValue::SubnetMask(Ipv4Addr::from_str("255.255.255.0").unwrap()),
-        );
-        options.insert(
-            DhcpOption::Router,
-            DhcpOptionValue::Router(Ipv4Addr::from_str("192.168.122.1").unwrap()),
-        );
+        options.insert(DhcpOptionValue::MessageType(MessageType::Offer));
+        options.insert(DhcpOptionValue::SubnetMask(
+            Ipv4Addr::from_str("255.255.255.0").unwrap(),
+        ));
+        options.insert(DhcpOptionValue::Router(
+            Ipv4Addr::from_str("192.168.122.1").unwrap(),
+        ));
         dhcp.options = options;
         self.sink
             .send((dhcp, SocketAddr::from_str("255.255.255.255:68").unwrap()))
@@ -80,7 +75,8 @@ mod test {
     use tokio_stream::wrappers::ReceiverStream;
 
     use crate::dhcp::{
-        DhcpMessage, DhcpOption, DhcpOptionValue, Flags, HardwareType, MessageType, Operation,
+        DhcpMessage, DhcpOption, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
+        Operation,
     };
 
     use super::Handler;
@@ -141,7 +137,7 @@ mod test {
             server_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
             gateway_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
             client_hardware_address: vec![0, 0, 0, 0, 0, 0],
-            options: HashMap::new(),
+            options: DhcpOptions::new(),
         }
     }
 
@@ -160,7 +156,7 @@ mod test {
                 DhcpOptionValue::Router(Ipv4Addr::from_str("192.168.122.1").unwrap()),
             ),
         ];
-        let options = HashMap::from_iter(options_vec);
+        let options = DhcpOptions::from_iter(options_vec);
         DhcpMessage {
             operation: Operation::Offer,
             hardware_type: HardwareType::Ethernet,

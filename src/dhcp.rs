@@ -43,12 +43,14 @@ impl Encoder<DhcpMessage> for DhcpCodec {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
+    use std::{net::Ipv4Addr, str::FromStr};
 
     use crate::dhcp::models::{
         DhcpMessage, DhcpOption, DhcpOptionValue, Flags, HardwareType, Operation, MAGIC_COOKIE,
         OPTION_ARP_CACHE_TIMEOUT,
     };
+
+    use super::DhcpOptions;
 
     const OPERATION: u8 = 1;
     const HARDWARE_TYPE: u8 = 1;
@@ -96,7 +98,7 @@ mod test {
             server_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
             gateway_address: Ipv4Addr::from_str("0.0.0.0").unwrap(),
             client_hardware_address: vec![0, 0, 0, 0, 0, 0],
-            options: HashMap::new(),
+            options: DhcpOptions::new(),
         }
     }
 
@@ -187,7 +189,7 @@ mod test {
             error::DhcpSerializeError,
             models::{DhcpMessage, DhcpOption, DhcpOptionValue},
             test::build_dhcp_message_bytes_no_option,
-            Operation,
+            DhcpOptions, Operation,
         };
 
         use super::build_dhcp_message;
@@ -280,21 +282,6 @@ mod test {
             let bytes = [&build_dhcp_message_bytes_no_option(), options.as_slice()].concat();
             let dhcp = DhcpMessage::deserialize(&bytes).unwrap();
             assert_eq!(dhcp.serialize().unwrap(), bytes);
-        }
-
-        #[test]
-        fn should_fail() {
-            let bytes = build_dhcp_message_bytes_no_option();
-            let mut dhcp = DhcpMessage::deserialize(&bytes).unwrap();
-            let mut options = HashMap::new();
-            options.insert(DhcpOption::MessageType, DhcpOptionValue::ArpCacheTimeout(1));
-            dhcp.options = options;
-            let result = dhcp.serialize();
-            assert!(result.is_err());
-            assert_eq!(
-                result.err().unwrap(),
-                DhcpSerializeError::InvalidDhcpOptionValue
-            );
         }
     }
 

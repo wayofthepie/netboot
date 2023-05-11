@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::Ipv4Addr};
+use std::{collections::HashMap, hash::Hash, net::Ipv4Addr, ops::Deref};
 
 use super::{
     deserializer::deserialize_dhcp,
@@ -64,7 +64,7 @@ pub enum Operation {
     Acknowledgement,
 }
 
-#[derive(Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub enum MessageType {
     Discover,
     Offer,
@@ -85,7 +85,8 @@ pub struct Flags {
     pub broadcast: bool,
 }
 
-pub type DhcpOptions = HashMap<DhcpOption, DhcpOptionValue>;
+#[derive(Debug, PartialEq)]
+pub struct DhcpOptions(HashMap<DhcpOption, DhcpOptionValue>);
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub enum DhcpOption {
@@ -98,7 +99,48 @@ pub enum DhcpOption {
     Router,
 }
 
-#[derive(Debug, Hash, PartialEq)]
+impl Deref for DhcpOptions {
+    type Target = HashMap<DhcpOption, DhcpOptionValue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromIterator<(DhcpOption, DhcpOptionValue)> for DhcpOptions {
+    fn from_iter<T: IntoIterator<Item = (DhcpOption, DhcpOptionValue)>>(iter: T) -> Self {
+        let mut options = HashMap::new();
+        for (key, value) in iter {
+            options.insert(key, value);
+        }
+        DhcpOptions(options)
+    }
+}
+
+impl DhcpOptions {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn insert(&mut self, option: DhcpOptionValue) -> Option<DhcpOptionValue> {
+        let (key, value) = match option {
+            value @ DhcpOptionValue::MessageType(_) => (DhcpOption::MessageType, value),
+            value @ DhcpOptionValue::ArpCacheTimeout(_) => (DhcpOption::ArpCacheTimeout, value),
+            value @ DhcpOptionValue::SubnetMask(_) => (DhcpOption::SubnetMask, value),
+            value @ DhcpOptionValue::LogServer(_) => (DhcpOption::LogServer, value),
+            value @ DhcpOptionValue::ResourceLocationProtocolServer(_) => {
+                (DhcpOption::ResourceLocationProtocolServer, value)
+            }
+            value @ DhcpOptionValue::PathMTUPlateauTable(_) => {
+                (DhcpOption::PathMTUPlateauTable, value)
+            }
+            value @ DhcpOptionValue::Router(_) => (DhcpOption::Router, value),
+        };
+        self.0.insert(key, value)
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub enum DhcpOptionValue {
     MessageType(MessageType),
     ArpCacheTimeout(u32),
@@ -124,4 +166,44 @@ pub struct RawDhcpMessage<'a> {
     pub gateway_address: &'a [u8; 4],
     pub client_hardware_address: &'a [u8; 16],
     pub options: &'a [u8],
+}
+
+#[cfg(test)]
+mod test {
+    use std::{net::Ipv4Addr, str::FromStr};
+
+    use crate::dhcp::DhcpOption;
+
+    use super::{DhcpOptionValue, DhcpOptions, MessageType};
+
+    #[test]
+    fn should_store_all_options_correctly() {
+        let ip = Ipv4Addr::from_str("255.255.255.255").unwrap();
+        let mut options = DhcpOptions::new();
+        let mappings = vec![
+            (
+                DhcpOption::MessageType,
+                DhcpOptionValue::MessageType(MessageType::Discover),
+            ),
+            (DhcpOption::SubnetMask, DhcpOptionValue::SubnetMask(ip)),
+            (
+                DhcpOption::ArpCacheTimeout,
+                DhcpOptionValue::ArpCacheTimeout(10),
+            ),
+            (DhcpOption::Router, DhcpOptionValue::Router(ip)),
+            (DhcpOption::LogServer, DhcpOptionValue::LogServer(vec![ip])),
+            (
+                DhcpOption::ResourceLocationProtocolServer,
+                DhcpOptionValue::ResourceLocationProtocolServer(vec![ip]),
+            ),
+            (
+                DhcpOption::PathMTUPlateauTable,
+                DhcpOptionValue::PathMTUPlateauTable(vec![0]),
+            ),
+        ];
+        for (option, value) in mappings {
+            options.insert(value.clone());
+            assert_eq!(options.get(&option).unwrap(), &value);
+        }
+    }
 }
