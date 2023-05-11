@@ -8,13 +8,13 @@ use nom::IResult;
 
 use super::error::DhcpMessageError;
 use super::models::{
-    DhcpMessage, DhcpOption, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
-    Operation, RawDhcpMessage, ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION,
-    ETHERNET_HARDWARE_TYPE, IEE801_11WIRELESS_HARDWARE_TYPE, OFFER_OPERATION,
-    OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER, OPTION_MESSAGE_TYPE,
-    OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER, OPTION_MESSAGE_TYPE_OFFER,
-    OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST, OPTION_PATH_MTU_PLATEAU_TABLE,
-    OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER, OPTION_SUBNET_MASK,
+    DhcpMessage, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType, Operation,
+    RawDhcpMessage, ACKNOWLEDGEMENT_OPERATION, DISCOVER_OPERATION, ETHERNET_HARDWARE_TYPE,
+    IEE801_11WIRELESS_HARDWARE_TYPE, OFFER_OPERATION, OPTION_ARP_CACHE_TIMEOUT, OPTION_LOG_SERVER,
+    OPTION_MESSAGE_TYPE, OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, OPTION_MESSAGE_TYPE_DISCOVER,
+    OPTION_MESSAGE_TYPE_OFFER, OPTION_MESSAGE_TYPE_RELEASE, OPTION_MESSAGE_TYPE_REQUEST,
+    OPTION_PATH_MTU_PLATEAU_TABLE, OPTION_RESOURCE_LOCATION_SERVER, OPTION_ROUTER,
+    OPTION_SUBNET_MASK,
 };
 use super::REQUEST_OPERATION;
 
@@ -113,46 +113,25 @@ fn deserialize_raw_dhcp(bytes: &[u8]) -> IResult<&[u8], RawDhcpMessage, DhcpMess
 }
 
 // For reference see <https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml>.
-fn deserialize_dhcp_option(
-    bytes: &[u8],
-) -> IResult<&[u8], (DhcpOption, DhcpOptionValue), DhcpMessageError> {
+fn deserialize_dhcp_option(bytes: &[u8]) -> IResult<&[u8], DhcpOptionValue, DhcpMessageError> {
     match bytes {
         [OPTION_MESSAGE_TYPE, _, ref rest @ ..] => match rest {
-            [OPTION_MESSAGE_TYPE_DISCOVER, rest @ ..] => Ok((
-                rest,
-                (
-                    DhcpOption::MessageType,
-                    DhcpOptionValue::MessageType(MessageType::Discover),
-                ),
-            )),
-            [OPTION_MESSAGE_TYPE_OFFER, rest @ ..] => Ok((
-                rest,
-                (
-                    DhcpOption::MessageType,
-                    DhcpOptionValue::MessageType(MessageType::Offer),
-                ),
-            )),
-            [OPTION_MESSAGE_TYPE_REQUEST, rest @ ..] => Ok((
-                rest,
-                (
-                    DhcpOption::MessageType,
-                    DhcpOptionValue::MessageType(MessageType::Request),
-                ),
-            )),
+            [OPTION_MESSAGE_TYPE_DISCOVER, rest @ ..] => {
+                Ok((rest, DhcpOptionValue::MessageType(MessageType::Discover)))
+            }
+            [OPTION_MESSAGE_TYPE_OFFER, rest @ ..] => {
+                Ok((rest, DhcpOptionValue::MessageType(MessageType::Offer)))
+            }
+            [OPTION_MESSAGE_TYPE_REQUEST, rest @ ..] => {
+                Ok((rest, DhcpOptionValue::MessageType(MessageType::Request)))
+            }
             [OPTION_MESSAGE_TYPE_ACKNOWLEDGEMENT, rest @ ..] => Ok((
                 rest,
-                (
-                    DhcpOption::MessageType,
-                    DhcpOptionValue::MessageType(MessageType::Acknowledgement),
-                ),
+                DhcpOptionValue::MessageType(MessageType::Acknowledgement),
             )),
-            [OPTION_MESSAGE_TYPE_RELEASE, rest @ ..] => Ok((
-                rest,
-                (
-                    DhcpOption::MessageType,
-                    DhcpOptionValue::MessageType(MessageType::Release),
-                ),
-            )),
+            [OPTION_MESSAGE_TYPE_RELEASE, rest @ ..] => {
+                Ok((rest, DhcpOptionValue::MessageType(MessageType::Release)))
+            }
             _ => Err(nom::Err::Error(
                 DhcpMessageError::InvalidValueForOptionMessageType(rest[0]),
             )),
@@ -160,33 +139,18 @@ fn deserialize_dhcp_option(
         [OPTION_ARP_CACHE_TIMEOUT, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let timeout: u32 = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
-            Ok((
-                rest,
-                (
-                    DhcpOption::ArpCacheTimeout,
-                    DhcpOptionValue::ArpCacheTimeout(timeout),
-                ),
-            ))
+            Ok((rest, DhcpOptionValue::ArpCacheTimeout(timeout)))
         }
         [OPTION_SUBNET_MASK, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let subnet_mask = Ipv4Addr::from(*data);
-            Ok((
-                rest,
-                (
-                    DhcpOption::SubnetMask,
-                    DhcpOptionValue::SubnetMask(subnet_mask),
-                ),
-            ))
+            Ok((rest, DhcpOptionValue::SubnetMask(subnet_mask)))
         }
         [OPTION_LOG_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             // TODO: Make sure there are no bytes leftover here.
             let (_, addresses) = deserialize_ip_addresses(data)?;
-            Ok((
-                rest,
-                (DhcpOption::LogServer, DhcpOptionValue::LogServer(addresses)),
-            ))
+            Ok((rest, DhcpOptionValue::LogServer(addresses)))
         }
         [OPTION_RESOURCE_LOCATION_SERVER, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
@@ -194,28 +158,19 @@ fn deserialize_dhcp_option(
             let (_, addresses) = deserialize_ip_addresses(data)?;
             Ok((
                 rest,
-                (
-                    DhcpOption::ResourceLocationProtocolServer,
-                    DhcpOptionValue::ResourceLocationProtocolServer(addresses),
-                ),
+                DhcpOptionValue::ResourceLocationProtocolServer(addresses),
             ))
         }
         [OPTION_PATH_MTU_PLATEAU_TABLE, len, ref rest @ ..] => {
             let (rest, data) = take(*len as usize)(rest)?;
             let (_, sizes) =
                 many0(map(take_n_bytes::<2>, |&bytes| u16::from_be_bytes(bytes)))(data)?;
-            Ok((
-                rest,
-                (
-                    DhcpOption::PathMTUPlateauTable,
-                    DhcpOptionValue::PathMTUPlateauTable(sizes),
-                ),
-            ))
+            Ok((rest, DhcpOptionValue::PathMTUPlateauTable(sizes)))
         }
         [OPTION_ROUTER, _, ref rest @ ..] => {
             let (rest, data) = take_n_bytes::<4>(rest)?;
             let address = Ipv4Addr::from(*data);
-            Ok((rest, (DhcpOption::Router, DhcpOptionValue::Router(address))))
+            Ok((rest, DhcpOptionValue::Router(address)))
         }
         _ => Err(nom::Err::Error(DhcpMessageError::NotYetImplemented)),
     }

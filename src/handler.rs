@@ -5,9 +5,7 @@ use std::{
 
 use futures::{Sink, SinkExt, TryStream, TryStreamExt};
 
-use crate::dhcp::{
-    self, DhcpMessage, DhcpOption, DhcpOptionValue, DhcpOptions, MessageType, Operation,
-};
+use crate::dhcp::{self, DhcpMessage, DhcpOptionValue, DhcpOptions, MessageType, Operation};
 
 pub struct Handler<St, Si> {
     stream: St,
@@ -62,7 +60,6 @@ where
 #[cfg(test)]
 mod test {
     use std::{
-        collections::HashMap,
         error::Error,
         net::{Ipv4Addr, SocketAddr},
         pin::Pin,
@@ -75,7 +72,7 @@ mod test {
     use tokio_stream::wrappers::ReceiverStream;
 
     use crate::dhcp::{
-        DhcpMessage, DhcpOption, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
+        DhcpMessage, DhcpOptionValue, DhcpOptions, Flags, HardwareType, MessageType,
         Operation,
     };
 
@@ -143,18 +140,9 @@ mod test {
 
     fn expected_offer() -> DhcpMessage {
         let options_vec = vec![
-            (
-                DhcpOption::MessageType,
-                DhcpOptionValue::MessageType(MessageType::Offer),
-            ),
-            (
-                DhcpOption::SubnetMask,
-                DhcpOptionValue::SubnetMask(Ipv4Addr::from_str("255.255.255.0").unwrap()),
-            ),
-            (
-                DhcpOption::Router,
-                DhcpOptionValue::Router(Ipv4Addr::from_str("192.168.122.1").unwrap()),
-            ),
+            DhcpOptionValue::MessageType(MessageType::Offer),
+            DhcpOptionValue::SubnetMask(Ipv4Addr::from_str("255.255.255.0").unwrap()),
+            DhcpOptionValue::Router(Ipv4Addr::from_str("192.168.122.1").unwrap()),
         ];
         let options = DhcpOptions::from_iter(options_vec);
         DhcpMessage {

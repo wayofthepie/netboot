@@ -107,13 +107,13 @@ impl Deref for DhcpOptions {
     }
 }
 
-impl FromIterator<(DhcpOption, DhcpOptionValue)> for DhcpOptions {
-    fn from_iter<T: IntoIterator<Item = (DhcpOption, DhcpOptionValue)>>(iter: T) -> Self {
-        let mut options = HashMap::new();
-        for (key, value) in iter {
-            options.insert(key, value);
+impl FromIterator<DhcpOptionValue> for DhcpOptions {
+    fn from_iter<T: IntoIterator<Item = DhcpOptionValue>>(iter: T) -> Self {
+        let mut options = DhcpOptions::new();
+        for value in iter {
+            options.insert(value);
         }
-        DhcpOptions(options)
+        options
     }
 }
 
