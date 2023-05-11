@@ -14,8 +14,10 @@ use super::{
     REQUEST_OPERATION,
 };
 
+const BUFFER_SIZE: usize = 750;
+
 pub fn serialize_dhcp(dhcp: &DhcpMessage) -> Result<Vec<u8>, DhcpSerializeError> {
-    let mut bytes = Vec::with_capacity(750);
+    let mut bytes = Vec::with_capacity(BUFFER_SIZE);
     let operation = match dhcp.operation {
         Operation::Discover => DISCOVER_OPERATION,
         Operation::Offer => OFFER_OPERATION,
